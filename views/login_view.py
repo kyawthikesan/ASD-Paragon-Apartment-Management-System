@@ -1,44 +1,46 @@
 import tkinter as tk
 from tkinter import messagebox
 from controllers.login_controller import LoginController
-from views.dashboard_view import DashboardView
 
 
 class LoginView:
-
     def __init__(self, root):
-
         self.root = root
 
-        frame = tk.Frame(root)
-        frame.pack(pady=150)
+        self.frame = tk.Frame(root)
+        self.frame.pack(pady=150)
 
-        tk.Label(frame, text="Login to PAMS", font=("Arial", 16)).grid(row=0, columnspan=2, pady=10)
+        tk.Label(self.frame, text="Login to PAMS", font=("Arial", 16)).grid(row=0, columnspan=2, pady=10)
 
-        tk.Label(frame, text="Username").grid(row=1, column=0)
-        self.username_entry = tk.Entry(frame)
-        self.username_entry.grid(row=1, column=1)
+        tk.Label(self.frame, text="Username").grid(row=1, column=0, sticky="e", padx=5)
+        self.username_entry = tk.Entry(self.frame)
+        self.username_entry.grid(row=1, column=1, padx=5)
 
-        tk.Label(frame, text="Password").grid(row=2, column=0)
-        self.password_entry = tk.Entry(frame, show="*")
-        self.password_entry.grid(row=2, column=1)
+        tk.Label(self.frame, text="Password").grid(row=2, column=0, sticky="e", padx=5)
+        self.password_entry = tk.Entry(self.frame, show="*")
+        self.password_entry.grid(row=2, column=1, padx=5)
 
-        tk.Button(frame, text="Login", command=self.login).grid(row=3, columnspan=2, pady=10)
+        tk.Button(self.frame, text="Login", command=self.login).grid(row=3, columnspan=2, pady=10)
+
+        self.root.bind("<Return>", lambda _event: self.login())
 
     def login(self):
+        username = self.username_entry.get().strip()
+        password = self.password_entry.get().strip()
 
-        username = self.username_entry.get()
-        password = self.password_entry.get()
+        if not username or not password:
+            messagebox.showerror("Error", "Please enter username and password.")
+            return
 
-        role = LoginController.authenticate(username, password)
+        user = LoginController.authenticate(username, password)
 
-        if role:
-            messagebox.showinfo("Success", "Login Successful")
+        if user:
+            role = user["role"]
 
             for widget in self.root.winfo_children():
                 widget.destroy()
 
-            DashboardView(self.root)
-
+            from views.dashboard_view import DashboardView
+            DashboardView(self.root, role)
         else:
             messagebox.showerror("Error", "Invalid login")

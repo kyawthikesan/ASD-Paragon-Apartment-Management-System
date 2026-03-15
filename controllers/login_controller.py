@@ -1,23 +1,19 @@
 from database.database import get_connection
 
-
 class LoginController:
-
     @staticmethod
     def authenticate(username, password):
-
         conn = get_connection()
         cursor = conn.cursor()
 
         cursor.execute(
-            "SELECT role FROM users WHERE username=? AND password=?",
+            "SELECT id, role FROM users WHERE username=? AND password=?",
             (username, password)
         )
 
-        result = cursor.fetchone()
+        row = cursor.fetchone()
         conn.close()
 
-        if result:
-            return result[0]
-
+        if row:
+            return {"user_id": row[0], "role": row[1]}
         return None
