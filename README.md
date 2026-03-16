@@ -61,9 +61,9 @@ PAMS/
 This project was completed by a group of four members:
 **Kyaw Thike San** – Project Lead, System Architect, and Integration Lead
 Responsible for leading the project, coordinating group tasks, planning the system structure, supporting the integration of system components, and ensuring the final application aligned with project requirements.
-[Member 2 Name] – UI/Frontend Developer
+**Shune Pyae Pyae Aung** – UI/Frontend Developer
 Responsible for designing and implementing the graphical user interface, improving layout, and enhancing user interaction.
-[Member 3 Name] – Backend and Database Developer
+**Nang Phwe Hleng Hun** – Backend and Database Developer
 Responsible for database design, data handling, query implementation, and backend logic.
 [Member 4 Name] – Testing and Documentation Lead
 Responsible for testing system functions, identifying bugs, supporting debugging, and preparing documentation.
