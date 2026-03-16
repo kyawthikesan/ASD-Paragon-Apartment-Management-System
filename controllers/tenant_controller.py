@@ -23,7 +23,55 @@ class TenantController:
         conn = get_connection()
         cursor = conn.cursor()
 
-        cursor.execute("SELECT * FROM tenants")
+        cursor.execute("SELECT * FROM tenants order by id DESC")
+        tenants = cursor.fetchall()
+
+        conn.close()
+
+        return tenants
+    
+    @staticmethod
+    def update_tenant(tenant_id, name, ni, phone, email):
+
+        ni = ni.upper()
+
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            UPDATE tenants
+            SET name=?, ni_number=?, phone=?, email=?
+            WHERE id=?
+        """, (name, ni, phone, email, tenant_id))
+
+        conn.commit()
+        conn.close()
+
+    @staticmethod
+    def delete_tenant(tenant_id):
+
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("DELETE FROM tenants WHERE id = ?", (tenant_id,))
+
+        conn.commit()
+        conn.close()
+
+    @staticmethod
+    def search_tenant(keyword):
+
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT * FROM tenants
+            WHERE name LIKE ? OR ni_number LIKE ?
+            """,
+            (f"%{keyword}%", f"%{keyword}%")
+        )
+
         tenants = cursor.fetchall()
 
         conn.close()
