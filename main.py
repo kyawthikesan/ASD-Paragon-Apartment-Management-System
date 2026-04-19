@@ -8,6 +8,11 @@ from controllers.auth_controller import AuthController
 from views.tenant_view import TenantView
 from views.apartment_view import ApartmentView
 from views.lease_view import LeaseView
+from dao.lease_dao import LeaseDAO
+import os
+
+from database.db_manager import DBManager
+
 
 
 class PAMSApp(tk.Tk):
@@ -17,7 +22,12 @@ class PAMSApp(tk.Tk):
         self.geometry("800x500")
         self.configure(bg="#f5f1eb")
 
-        DBManager.initialise_database()
+        if not os.path.exists("pams.db"):
+            DBManager.initialise_database()
+            DBManager.run_seed()
+        else:
+            DBManager.initialise_database()
+
         UserDAO.seed_roles()
         self.ensure_default_admin()
 
@@ -63,6 +73,7 @@ class PAMSApp(tk.Tk):
 
     def show_lease_management(self):
         self.clear_view()
+        LeaseDAO.expire_leases()
         self.current_view = LeaseView(self, self.show_dashboard)
 
     def logout(self):

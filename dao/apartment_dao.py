@@ -4,14 +4,14 @@ from database.db_manager import DBManager
 class ApartmentDAO:
 
     @staticmethod
-    def add_apartment(locationID, type, rent, rooms):
+    def add_apartment(location_id, type, rent, rooms):
         conn = DBManager.get_connection()
         cursor = conn.cursor()
 
         cursor.execute("""
-        INSERT INTO apartments (locationID, type, rent, rooms, status)
+        INSERT INTO apartments (location_id, type, rent, rooms, status)
         VALUES (?, ?, ?, ?, ?)
-        """, (locationID, type, rent, rooms, "Available"))
+        """, (location_id, type, rent, rooms, "Available"))
 
         conn.commit()
         conn.close()
@@ -21,22 +21,32 @@ class ApartmentDAO:
         conn = DBManager.get_connection()
         cursor = conn.cursor()
 
-        cursor.execute("SELECT * FROM apartments ORDER BY apartmentID DESC")
+        cursor.execute("""
+        SELECT 
+            a.apartmentID,
+            l.city,
+            a.type,
+            a.rent,
+            a.rooms
+        FROM apartments a
+        JOIN locations l ON a.location_id = l.location_id
+        ORDER BY a.apartmentID DESC
+        """)
         rows = cursor.fetchall()
 
         conn.close()
         return rows
 
     @staticmethod
-    def update_apartment(apartmentID, locationID, type, rent, rooms):
+    def update_apartment(apartmentID, location_id, type, rent, rooms):
         conn = DBManager.get_connection()
         cursor = conn.cursor()
 
         cursor.execute("""
         UPDATE apartments
-        SET locationID=?, type=?, rent=?, rooms=?
+        SET location_id=?, type=?, rent=?, rooms=?
         WHERE apartmentID=?
-        """, (locationID, type, rent, rooms, apartmentID))
+        """, (location_id, type, rent, rooms, apartmentID))
 
         conn.commit()
         conn.close()
@@ -57,9 +67,32 @@ class ApartmentDAO:
         cursor = conn.cursor()
 
         cursor.execute("""
-        SELECT * FROM apartments
-        WHERE type LIKE ?
+        SELECT 
+            a.apartmentID,
+            l.city,
+            a.type,
+            a.rent,
+            a.rooms
+        FROM apartments a
+        JOIN locations l ON a.location_id = l.location_id
+        WHERE a.type LIKE ?
+        ORDER BY a.apartmentID DESC
         """, (f"%{keyword}%",))
+
+    @staticmethod
+    def get_available_apartments():
+        conn = DBManager.get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+        SELECT 
+            a.apartmentID,
+            l.city,
+            a.type
+        FROM apartments a
+        JOIN locations l ON a.location_id = l.location_id
+        WHERE a.status = 'Available'
+        """)
 
         rows = cursor.fetchall()
         conn.close()

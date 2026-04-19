@@ -11,6 +11,14 @@ class DBManager:
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
         return conn
+    
+    @staticmethod
+    def run_seed():
+        conn = DBManager.get_connection()
+
+        with open("database/seed.sql", "r") as file:
+            conn.executescript(file.read())
+
 
     @staticmethod
     def initialise_database():
@@ -43,17 +51,20 @@ class DBManager:
         );
 
         CREATE TABLE IF NOT EXISTS locations (
-            locationID INTEGER PRIMARY KEY AUTOINCREMENT,
-            city TEXT
+            location_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            city TEXT NOT NULL,
+            office_name TEXT
         );
 
         CREATE TABLE IF NOT EXISTS apartments (
             apartmentID INTEGER PRIMARY KEY AUTOINCREMENT,
-            locationID INTEGER,
+            location_id INTEGER,
             type TEXT,
             rent REAL,
             rooms INTEGER,
-            status TEXT
+            status TEXT DEFAULT 'Available',
+
+            FOREIGN KEY (location_id) REFERENCES locations(location_id)
         );
 
         CREATE TABLE IF NOT EXISTS leases (

@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from controllers.apartment_controller import ApartmentController
+from dao.location_dao import LocationDAO
 
 
 class ApartmentView(tk.Frame):
@@ -22,10 +23,11 @@ class ApartmentView(tk.Frame):
         # FORM
         form_frame = ttk.LabelFrame(main_frame, text="Apartment Details", padding=15)
         form_frame.pack(fill="x", pady=10)
-
-        ttk.Label(form_frame, text="Location ID").grid(row=0, column=0, padx=10, pady=5)
-        self.location = ttk.Entry(form_frame)
-        self.location.grid(row=0, column=1)
+        
+        ttk.Label(form_frame, text="Location").grid(row=0, column=0, padx=10, pady=5)
+        self.location_combo = ttk.Combobox(form_frame, state="readonly")
+        self.location_combo.grid(row=0, column=1)
+        self.load_locations() 
 
         ttk.Label(form_frame, text="Type").grid(row=1, column=0, padx=10, pady=5)
         self.type = ttk.Entry(form_frame)
@@ -96,7 +98,7 @@ class ApartmentView(tk.Frame):
         for apt in apartments:
             self.table.insert("", tk.END, values=(
                 apt["apartmentID"],
-                apt["locationID"],
+                apt["city"],
                 apt["type"],
                 apt["rent"],
                 apt["rooms"]
@@ -109,8 +111,8 @@ class ApartmentView(tk.Frame):
 
         values = self.table.item(selected[0], "values")
 
-        self.location.delete(0, tk.END)
-        self.location.insert(0, values[1])
+        # set dropdown (city)
+        self.location_combo.set(values[1])
 
         self.type.delete(0, tk.END)
         self.type.insert(0, values[2])
@@ -125,17 +127,19 @@ class ApartmentView(tk.Frame):
         self.delete_btn.config(state="normal")
 
     def add_apartment(self):
-        location = self.location.get()
+        selected_city = self.location_combo.get()
+        location_id = self.location_map[selected_city]
+
         apt_type = self.type.get()
         rent = self.rent.get()
         rooms = self.rooms.get()
 
-        if not location or not apt_type or not rent or not rooms:
+        if not selected_city or not apt_type or not rent or not rooms:
             messagebox.showerror("Error", "All fields are required")
             return
 
         ApartmentController.add_apartment(
-            location,
+            location_id,
             apt_type,
             rent,
             rooms
@@ -153,13 +157,17 @@ class ApartmentView(tk.Frame):
 
         apt_id = self.table.item(selected[0], "values")[0]
 
+        selected_city = self.location_combo.get()
+        location_id = self.location_map[selected_city]
+
         ApartmentController.update_apartment(
             apt_id,
-            self.location.get(),
+            location_id,
             self.type.get(),
             self.rent.get(),
             self.rooms.get()
         )
+
         messagebox.showinfo("Updated", "Apartment updated")
         self.load_apartments()
 
@@ -185,14 +193,26 @@ class ApartmentView(tk.Frame):
         for apt in results:
             self.table.insert("", tk.END, values=(
                 apt["apartmentID"],
-                apt["locationID"],
+                apt["city"],  
                 apt["type"],
                 apt["rent"],
                 apt["rooms"]
             ))
 
+    def load_locations(self):
+        locations = LocationDAO.get_all_locations()
+
+        # store mapping: city → id
+        self.location_map = {loc["city"]: loc["location_id"] for loc in locations}
+
+        # show city names
+        self.location_combo["values"] = list(self.location_map.keys())
+
+        if locations:
+            self.location_combo.current(0)  # select first by default   
+
     def clear_fields(self):
-        self.location.delete(0, tk.END)
+        self.location_combo.set("") 
         self.type.delete(0, tk.END)
         self.rent.delete(0, tk.END)
         self.rooms.delete(0, tk.END)

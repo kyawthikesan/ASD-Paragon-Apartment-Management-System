@@ -20,12 +20,16 @@ class TenantDAO:
         conn = DBManager.get_connection()
         cursor = conn.cursor()
 
-        cursor.execute("SELECT * FROM tenants ORDER BY tenantID DESC")
-        rows = cursor.fetchall()
+        cursor.execute("""
+        SELECT tenantID, name, NI_number, phone, email 
+        FROM tenants
+        ORDER BY tenantID DESC
+        """)
 
+        rows = cursor.fetchall()
         conn.close()
         return rows
-
+    
     @staticmethod
     def update_tenant(tenant_id, name, NI_number, phone, email):
         conn = DBManager.get_connection()

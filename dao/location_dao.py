@@ -1,13 +1,14 @@
-from database.db_manager import connect
+from database.db_manager import DBManager
 
-def add_location(city):
-    conn = connect()
-    cursor = conn.cursor()
+class LocationDAO:
 
-    cursor.execute("""
-    INSERT INTO locations (city)
-    VALUES (?)
-    """, (city,))
+    @staticmethod
+    def get_all_locations():
+        conn = DBManager.get_connection()
+        cursor = conn.cursor()
 
-    conn.commit()
-    conn.close()
+        cursor.execute("SELECT location_id, city FROM locations")
+        rows = cursor.fetchall()
+
+        conn.close()
+        return rows

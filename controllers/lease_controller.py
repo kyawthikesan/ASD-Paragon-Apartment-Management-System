@@ -1,36 +1,39 @@
-from database.db_manager import DBManager
+from dao.lease_dao import LeaseDAO
+from datetime import datetime
 
 
 class LeaseController:
 
     @staticmethod
-    def create_lease(tenant_id, apartment_id, start_date, end_date):
+    def create_lease(tenantID, apartmentID, start_date, end_date):
 
-        conn = DBManager.get_connection()
-        cursor = conn.cursor()
+        # Convert to date for comparison
+        try:
+            start = datetime.strptime(start_date, "%Y-%m-%d")
+            end = datetime.strptime(end_date, "%Y-%m-%d")
+        except:
+            return "Invalid date format (YYYY-MM-DD)"
 
-        cursor.execute(
-            "INSERT INTO leases (tenant_id, apartment_id, start_date, end_date) VALUES (?, ?, ?, ?)",
-            (tenant_id, apartment_id, start_date, end_date)
-        )
+        # Rule 1: End date > Start date
+        if end <= start:
+            return "End date must be after start date"
 
-        conn.commit()
-        conn.close()
+        # Rule 2: One active lease per tenant
+        if LeaseDAO.has_active_lease(tenantID):
+            return "Tenant already has an active lease"
+
+        # Rule 3: Apartment must be available
+        if not LeaseDAO.is_apartment_available(apartmentID):
+            return "Apartment is not available"
+
+        # Create lease
+        LeaseDAO.create_lease(tenantID, apartmentID, start_date, end_date)
+
+        # Update apartment status
+        LeaseDAO.mark_apartment_occupied(apartmentID)
+
+        return "Success"
 
     @staticmethod
-    def get_leases():
-
-        conn = DBManager.get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("""
-        SELECT leases.id, tenants.name, apartments.city, leases.start_date, leases.end_date
-        FROM leases
-        JOIN tenants ON leases.tenant_id = tenants.id
-        JOIN apartments ON leases.apartment_id = apartments.id
-        """)
-
-        data = cursor.fetchall()
-        conn.close()
-
-        return data
+    def get_all_leases():
+        return LeaseDAO.get_all_leases()

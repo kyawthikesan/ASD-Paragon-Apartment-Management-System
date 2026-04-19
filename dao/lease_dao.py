@@ -1,69 +1,138 @@
-from database.db_manager import connect
-from datetime import datetime
-from dao.apartment_dao import is_apartment_available, assign_apartment
+from database.db_manager import DBManager
+from datetime import date
 
-def create_lease(tenant_id, apartment_id, start_date, end_date):
-    conn = connect()
-    cursor = conn.cursor()
 
-    # 🔥 RULE 1: check apartment availability
-    if not is_apartment_available(apartment_id):
-        print("Apartment is already occupied")
-        return
+class LeaseDAO:
 
-    # 🔥 RULE 2: validate dates
-    if datetime.strptime(end_date, "%Y-%m-%d") <= datetime.strptime(start_date, "%Y-%m-%d"):
-        print("Invalid lease dates")
-        return
+    # =========================
+    # CREATE LEASE
+    # =========================
+    @staticmethod
+    def create_lease(tenantID, apartmentID, start_date, end_date):
+        conn = DBManager.get_connection()
+        cursor = conn.cursor()
 
-    # 🔥 RULE 3: one active lease per tenant
-    cursor.execute("""
-    SELECT * FROM leases
-    WHERE tenantID = ? AND status = 'active'
-    """, (tenant_id,))
+        cursor.execute("""
+        INSERT INTO leases (tenantID, apartmentID, start_date, end_date, status)
+        VALUES (?, ?, ?, ?, 'Active')
+        """, (tenantID, apartmentID, start_date, end_date))
 
-    if cursor.fetchone():
-        print("Tenant already has an active lease")
-        return
+        conn.commit()
+        conn.close()
 
-    # ✅ create lease
-    cursor.execute("""
-    INSERT INTO leases (tenantID, apartmentID, startDate, endDate, status)
-    VALUES (?, ?, ?, ?, 'active')
-    """, (tenant_id, apartment_id, start_date, end_date))
 
-    # 🔥 update apartment status
-    assign_apartment(apartment_id)
+    # =========================
+    # GET ALL LEASES (UI LIST)
+    # =========================
+    @staticmethod
+    def get_all_leases():
+        conn = DBManager.get_connection()
+        conn.row_factory = lambda cursor, row: {
+            "leaseID": row[0],
+            "tenant": row[1],
+            "apartment": row[2],
+            "start_date": row[3],
+            "end_date": row[4],
+            "status": row[5]
+        }
+        cursor = conn.cursor()
 
-    conn.commit()
-    conn.close()
+        cursor.execute("""
+        SELECT l.leaseID, t.name, a.type, l.start_date, l.end_date, l.status
+        FROM leases l
+        JOIN tenants t ON l.tenantID = t.tenantID
+        JOIN apartments a ON l.apartmentID = a.apartmentID
+        ORDER BY l.leaseID DESC
+        """)
 
-    print("Lease created successfully")
+        rows = cursor.fetchall()
+        conn.close()
+        return rows
 
-def terminate_lease(lease_id):
-    conn = connect()
-    cursor = conn.cursor()
 
-    # get lease details
-    cursor.execute("""
-    SELECT apartmentID FROM leases WHERE leaseID = ?
-    """, (lease_id,))
-    
-    apartment_id = cursor.fetchone()[0]
+    # =========================
+    # CHECK ACTIVE LEASE (FIXED - DATE BASED)
+    # =========================
+    @staticmethod
+    def has_active_lease(tenantID):
+        conn = DBManager.get_connection()
+        cursor = conn.cursor()
 
-    # set lease inactive
-    cursor.execute("""
-    UPDATE leases
-    SET status = 'terminated'
-    WHERE leaseID = ?
-    """, (lease_id,))
+        cursor.execute("""
+        SELECT *
+        FROM leases
+        WHERE tenantID = ?
+        AND DATE(end_date) >= DATE('now')
+        """, (tenantID,))
 
-    # free apartment
-    cursor.execute("""
-    UPDATE apartments
-    SET status = 'available'
-    WHERE apartmentID = ?
-    """, (apartment_id,))
+        result = cursor.fetchone()
+        conn.close()
+        return result is not None
 
-    conn.commit()
-    conn.close()
+
+    # =========================
+    # CHECK APARTMENT AVAILABILITY
+    # =========================
+    @staticmethod
+    def is_apartment_available(apartmentID):
+        conn = DBManager.get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+        SELECT status
+        FROM apartments
+        WHERE apartmentID = ?
+        """, (apartmentID,))
+
+        result = cursor.fetchone()
+        conn.close()
+
+        return result and result["status"] == "Available"
+
+
+    # =========================
+    # MARK APARTMENT OCCUPIED
+    # =========================
+    @staticmethod
+    def mark_apartment_occupied(apartmentID):
+        conn = DBManager.get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+        UPDATE apartments
+        SET status = 'Occupied'
+        WHERE apartmentID = ?
+        """, (apartmentID,))
+
+        conn.commit()
+        conn.close()
+
+
+    # =========================
+    # AUTO EXPIRE OLD LEASES (IMPORTANT FIX)
+    # =========================
+    @staticmethod
+    def expire_leases():
+        conn = DBManager.get_connection()
+        cursor = conn.cursor()
+
+        #expire lease
+        cursor.execute("""
+        UPDATE leases
+        SET status = 'Ended'
+        WHERE DATE(end_date) < DATE('now')
+        AND status = 'Active'
+        """)
+
+        #free apartments
+        cursor.execute("""
+        UPDATE apartments
+        SET status = 'Available'
+        WHERE apartmentID IN (
+            SELECT apartmentID FROM leases
+            WHERE DATE(end_date) < DATE('now')
+        )
+        """)
+
+        conn.commit()
+        conn.close()
