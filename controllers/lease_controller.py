@@ -1,4 +1,4 @@
-from database.database import get_connection
+from database.db_manager import DBManager
 
 
 class LeaseController:
@@ -6,7 +6,7 @@ class LeaseController:
     @staticmethod
     def create_lease(tenant_id, apartment_id, start_date, end_date):
 
-        conn = get_connection()
+        conn = DBManager.get_connection()
         cursor = conn.cursor()
 
         cursor.execute(
@@ -20,7 +20,7 @@ class LeaseController:
     @staticmethod
     def get_leases():
 
-        conn = get_connection()
+        conn = DBManager.get_connection()
         cursor = conn.cursor()
 
         cursor.execute("""

@@ -33,6 +33,41 @@ class DBManager:
             created_at TEXT,
             FOREIGN KEY(role_id) REFERENCES roles(id)
         );
+                           
+        CREATE TABLE IF NOT EXISTS tenants (
+            tenantID INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            phone TEXT,
+            email TEXT,
+            NI_number TEXT UNIQUE
+        );
+
+        CREATE TABLE IF NOT EXISTS locations (
+            locationID INTEGER PRIMARY KEY AUTOINCREMENT,
+            city TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS apartments (
+            apartmentID INTEGER PRIMARY KEY AUTOINCREMENT,
+            locationID INTEGER,
+            type TEXT,
+            rent REAL,
+            rooms INTEGER,
+            status TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS leases (
+            leaseID INTEGER PRIMARY KEY AUTOINCREMENT,
+            tenantID INTEGER,
+            apartmentID INTEGER,
+            start_date TEXT,
+            end_date TEXT,
+            status TEXT,
+            FOREIGN KEY(tenantID) REFERENCES tenants(tenantID),
+            FOREIGN KEY(apartmentID) REFERENCES apartments(apartmentID)
+        );
+
+
         """)
 
         conn.commit()
