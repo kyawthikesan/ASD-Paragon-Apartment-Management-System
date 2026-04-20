@@ -1,4 +1,5 @@
 import tkinter as tk
+from tkinter import ttk
 from database.db_manager import DBManager
 from dao.user_dao import UserDAO
 from views.login_view import LoginView
@@ -11,20 +12,16 @@ from views.lease_view import LeaseView
 from dao.lease_dao import LeaseDAO
 import os
 
-from database.db_manager import DBManager
-
-
-
 class PAMSApp(tk.Tk):
     def __init__(self):
         super().__init__()
 
         self.title("Paragon Apartment Management System")
-        self.configure(bg="#1C1A17")          # deep black-brown — matches LoginView canvas
+        self.configure(bg="#1C1A17")          # deep black-brown to match login view
         self.center_window(1100, 700)
         self.minsize(950, 600)
 
-        # Window icon (optional — place logo.ico or logo.png in images/)
+        # Window icon
         try:
             self.iconbitmap("images/logo.ico")
         except Exception:
@@ -34,7 +31,7 @@ class PAMSApp(tk.Tk):
                 self._icon = ImageTk.PhotoImage(icon)
                 self.iconphoto(True, self._icon)
             except Exception:
-                pass                          # no icon — silently skip
+                pass                          
 
         self.current_view = None
 
@@ -64,10 +61,26 @@ class PAMSApp(tk.Tk):
     def show_login(self):
         self.configure(bg="#1C1A17")          # dark canvas for login
         self.clear_view()
-        self.current_view = LoginView(self, self.show_dashboard)
+        self.current_view = LoginView(self, self.route_dashboard_by_role)
+
+    def route_dashboard_by_role(self, role: str | None = None):
+        role_name = role or AuthController.get_current_role()
+
+        if role_name == "admin":
+            self.show_admin_dashboard()
+        elif role_name == "front_desk":
+            self.show_front_desk_dashboard()
+        elif role_name == "finance":
+            self.show_finance_dashboard()
+        elif role_name == "maintenance":
+            self.show_maintenance_dashboard()
+        elif role_name == "manager":
+            self.show_manager_dashboard()
+        else:
+            self.logout()
 
     def show_dashboard(self):
-        self.configure(bg="#1C1A17")          # keep consistent; dashboard sets its own bg
+        self.configure(bg="#1C1A17")          # dashboard sets its own bg
         self.clear_view()
         self.current_view = DashboardView(
             self,
@@ -77,6 +90,42 @@ class PAMSApp(tk.Tk):
             self.show_apartment_management,
             self.show_lease_management
         )
+
+    def show_admin_dashboard(self):
+        self.show_dashboard()
+
+    def show_manager_dashboard(self):
+        self.show_dashboard()
+
+    def show_front_desk_dashboard(self):
+        self.show_dashboard()
+
+    def show_finance_dashboard(self):
+        self._show_role_placeholder("Finance Manager")
+
+    def show_maintenance_dashboard(self):
+        self._show_role_placeholder("Maintenance Staff")
+
+    def _show_role_placeholder(self, role_title: str):
+        self.configure(bg="#1C1A17")
+        self.clear_view()
+
+        frame = ttk.Frame(self, padding=24)
+        frame.pack(fill="both", expand=True)
+
+        ttk.Label(
+            frame,
+            text=f"{role_title} Dashboard",
+            font=("Arial", 16, "bold")
+        ).pack(anchor="w", pady=(0, 8))
+
+        ttk.Label(
+            frame,
+            text="This role dashboard is connected and ready for feature modules."
+        ).pack(anchor="w", pady=(0, 16))
+
+        ttk.Button(frame, text="Logout", command=self.logout).pack(anchor="w")
+        self.current_view = frame
 
     def show_user_management(self):
         self.clear_view()
