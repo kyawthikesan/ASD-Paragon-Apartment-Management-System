@@ -1,4 +1,5 @@
 from datetime import datetime
+import sqlite3
 from database.db_manager import DBManager
 from utils.security import hash_password
 
@@ -35,28 +36,44 @@ class UserDAO:
             if role is None:
                 raise ValueError(f"Role '{role_name}' does not exist.")
 
-            conn.execute("""
-                INSERT INTO users (
+            try:
+                conn.execute("""
+                    INSERT INTO users (
+                        full_name,
+                        username,
+                        password_hash,
+                        role_id,
+                        location,
+                        is_active,
+                        created_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (
                     full_name,
                     username,
-                    password_hash,
-                    role_id,
+                    hash_password(password),
+                    role["id"],
                     location,
                     is_active,
-                    created_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (
-                full_name,
-                username,
-                hash_password(password),
-                role["id"],
-                location,
-                is_active,
-                datetime.now().isoformat(timespec="seconds")
-            ))
+                    datetime.now().isoformat(timespec="seconds")
+                ))
+            except sqlite3.IntegrityError as error:
+                if "users.username" in str(error) or "UNIQUE constraint failed: users.username" in str(error):
+                    raise ValueError("Username already exists.") from error
+                raise
 
             conn.commit()
+        finally:
+            conn.close()
+
+    @staticmethod
+    def get_roles():
+        conn = DBManager.get_connection()
+        try:
+            rows = conn.execute(
+                "SELECT role_name FROM roles ORDER BY role_name"
+            ).fetchall()
+            return [row["role_name"] for row in rows]
         finally:
             conn.close()
 
