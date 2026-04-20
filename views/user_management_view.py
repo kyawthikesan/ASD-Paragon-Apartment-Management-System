@@ -7,6 +7,7 @@ class UserManagementView(ttk.Frame):
     def __init__(self, parent, go_back):
         super().__init__(parent, padding=20)
         self.go_back = go_back
+        self.selected_user_id = None
         self.grid(sticky="nsew")
 
         ttk.Label(self, text="User Management", font=("Arial", 16, "bold")).grid(
@@ -24,6 +25,9 @@ class UserManagementView(ttk.Frame):
         ttk.Label(self, text="Password").grid(row=3, column=0, sticky="w")
         self.password_entry = ttk.Entry(self, width=30, show="*")
         self.password_entry.grid(row=3, column=1, pady=5)
+        ttk.Label(self, text="(leave blank to keep current password)").grid(
+            row=3, column=2, sticky="w", padx=(8, 0)
+        )
 
         ttk.Label(self, text="Role").grid(row=4, column=0, sticky="w")
         self.role_values = UserDAO.get_roles()
@@ -48,8 +52,9 @@ class UserManagementView(ttk.Frame):
             variable=self.active_var
         ).grid(row=6, column=1, sticky="w", pady=(2, 6))
 
-        ttk.Button(self, text="Create User", command=self.create_user).grid(
-            row=7, column=0, columnspan=2, pady=10
+        ttk.Button(self, text="Create User", command=self.create_user).grid(row=7, column=0, pady=10, sticky="w")
+        ttk.Button(self, text="Update Selected", command=self.update_selected_user).grid(
+            row=7, column=1, pady=10, sticky="e"
         )
 
         self.tree = ttk.Treeview(
@@ -61,6 +66,7 @@ class UserManagementView(ttk.Frame):
         for col in ("ID", "Name", "Username", "Role", "Location", "Active"):
             self.tree.heading(col, text=col)
         self.tree.grid(row=8, column=0, columnspan=2, pady=10)
+        self.tree.bind("<<TreeviewSelect>>", self.on_user_select)
 
         ttk.Button(self, text="Deactivate Selected", command=self.deactivate_selected).grid(
             row=9, column=0, sticky="w", pady=5
@@ -109,6 +115,7 @@ class UserManagementView(ttk.Frame):
         self.password_entry.delete(0, tk.END)
         self.location_entry.delete(0, tk.END)
         self.active_var.set(True)
+        self.selected_user_id = None
         if self.role_values:
             self.role_combo.current(0)
 
@@ -136,3 +143,64 @@ class UserManagementView(ttk.Frame):
         UserDAO.deactivate_user(user_id)
         self.load_users()
         messagebox.showinfo("Success", "User deactivated.")
+
+    def on_user_select(self, event=None):
+        selected = self.tree.selection()
+        if not selected:
+            return
+
+        values = self.tree.item(selected[0])["values"]
+        self.selected_user_id = values[0]
+
+        self.full_name_entry.delete(0, tk.END)
+        self.full_name_entry.insert(0, values[1])
+
+        self.username_entry.delete(0, tk.END)
+        self.username_entry.insert(0, values[2])
+
+        role_name = values[3]
+        if role_name in self.role_values:
+            self.role_combo.set(role_name)
+
+        self.location_entry.delete(0, tk.END)
+        if values[4]:
+            self.location_entry.insert(0, values[4])
+
+        self.active_var.set(values[5] == "Yes")
+        self.password_entry.delete(0, tk.END)
+
+    def update_selected_user(self):
+        if self.selected_user_id is None:
+            messagebox.showwarning("Warning", "Select a user from the table first.")
+            return
+
+        full_name = self.full_name_entry.get().strip()
+        username = self.username_entry.get().strip()
+        password = self.password_entry.get().strip()
+        role_name = self.role_combo.get().strip()
+        location = self.location_entry.get().strip() or None
+        is_active = 1 if self.active_var.get() else 0
+
+        if not full_name or not username or not role_name:
+            messagebox.showerror("Error", "Full name, username, and role are required.")
+            return
+
+        if password and len(password) < 6:
+            messagebox.showerror("Error", "Password must be at least 6 characters.")
+            return
+
+        try:
+            UserDAO.update_user(
+                self.selected_user_id,
+                full_name,
+                username,
+                role_name,
+                location,
+                is_active,
+                password or None
+            )
+            messagebox.showinfo("Success", "User updated successfully.")
+            self._reset_form()
+            self.load_users()
+        except Exception as error:
+            messagebox.showerror("Error", str(error))
