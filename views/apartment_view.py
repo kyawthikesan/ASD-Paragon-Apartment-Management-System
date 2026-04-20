@@ -1,69 +1,221 @@
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import ttk, messagebox
 from controllers.apartment_controller import ApartmentController
+from dao.location_dao import LocationDAO
 
 
-class ApartmentView:
+class ApartmentView(tk.Frame):
 
-    def __init__(self, root):
+    def __init__(self, parent, back_callback):
+        super().__init__(parent)
+        self.pack(fill="both", expand=True)
 
-        frame = tk.Frame(root)
-        frame.pack(pady=20)
+        main_frame = ttk.Frame(self, padding=20)
+        main_frame.pack(fill="both", expand=True)
 
-        tk.Button(root, text="Back", command=lambda: self.go_back(root)).pack()
+        # Top
+        top_frame = ttk.Frame(main_frame)
+        top_frame.pack(fill="x")
 
-        tk.Label(frame, text="Apartment Management", font=("Arial", 18)).grid(row=0, columnspan=2, pady=10)
+        ttk.Button(top_frame, text="← Back", command=back_callback).pack(side="left")
+        ttk.Label(top_frame, text="Apartment Management", font=("Arial", 16, "bold")).pack(side="left", padx=20)
 
-        tk.Label(frame, text="City").grid(row=1, column=0)
-        self.city = tk.Entry(frame)
-        self.city.grid(row=1, column=1)
+        # FORM
+        form_frame = ttk.LabelFrame(main_frame, text="Apartment Details", padding=15)
+        form_frame.pack(fill="x", pady=10)
+        
+        ttk.Label(form_frame, text="Location").grid(row=0, column=0, padx=10, pady=5)
+        self.location_combo = ttk.Combobox(form_frame, state="readonly")
+        self.location_combo.grid(row=0, column=1)
+        self.load_locations() 
 
-        tk.Label(frame, text="Type").grid(row=2, column=0)
-        self.type = tk.Entry(frame)
-        self.type.grid(row=2, column=1)
+        ttk.Label(form_frame, text="Type").grid(row=1, column=0, padx=10, pady=5)
+        self.type = ttk.Entry(form_frame)
+        self.type.grid(row=1, column=1)
 
-        tk.Label(frame, text="Rent").grid(row=3, column=0)
-        self.rent = tk.Entry(frame)
-        self.rent.grid(row=3, column=1)
+        ttk.Label(form_frame, text="Rent").grid(row=2, column=0, padx=10, pady=5)
+        self.rent = ttk.Entry(form_frame)
+        self.rent.grid(row=2, column=1)
 
-        tk.Label(frame, text="Status").grid(row=4, column=0)
-        self.status = tk.Entry(frame)
-        self.status.grid(row=4, column=1)
+        ttk.Label(form_frame, text="Rooms").grid(row=3, column=0, padx=10, pady=5)
+        self.rooms = ttk.Entry(form_frame)
+        self.rooms.grid(row=3, column=1)
 
-        tk.Button(frame, text="Add Apartment", command=self.add_apartment).grid(row=5, columnspan=2, pady=10)
+        # Buttons
+        btn_frame = ttk.Frame(form_frame)
+        btn_frame.grid(row=4, column=0, columnspan=2, pady=10)
 
-        self.listbox = tk.Listbox(root, width=70)
-        self.listbox.pack(pady=20)
+        ttk.Button(btn_frame, text="Add", command=self.add_apartment).grid(row=0, column=0, padx=5)
 
-        self.load_apartments()
+        self.update_btn = ttk.Button(btn_frame, text="Update", command=self.update_apartment, state="disabled")
+        self.update_btn.grid(row=0, column=1, padx=5)
 
-    def add_apartment(self):
+        self.delete_btn = ttk.Button(btn_frame, text="Delete", command=self.delete_apartment, state="disabled")
+        self.delete_btn.grid(row=0, column=2, padx=5)
 
-        city = self.city.get()
-        apt_type = self.type.get()
-        rent = self.rent.get()
-        status = self.status.get()
+        # TABLE
+        table_frame = ttk.LabelFrame(main_frame, text="Apartments", padding=10)
+        table_frame.pack(fill="both", expand=True)
 
-        ApartmentController.add_apartment(city, apt_type, rent, status)
+        # Search
+        search_frame = ttk.Frame(table_frame)
+        search_frame.pack(fill="x")
 
-        messagebox.showinfo("Success", "Apartment Added")
+        self.search_entry = ttk.Entry(search_frame)
+        self.search_entry.pack(side="left", padx=5)
+
+        ttk.Button(search_frame, text="Search", command=self.search_apartment).pack(side="left")
+        ttk.Button(search_frame, text="Show All", command=self.load_apartments).pack(side="left")
+
+        # Table container
+        container = ttk.Frame(table_frame)
+        container.pack(fill="both", expand=True)
+
+        columns = ("ID", "Location", "Type", "Rent", "Rooms")
+
+        self.table = ttk.Treeview(container, columns=columns, show="headings")
+
+        for col in columns:
+            self.table.heading(col, text=col)
+            self.table.column(col, width=120)
+
+        self.table.pack(side="left", fill="both", expand=True)
+
+        scrollbar = ttk.Scrollbar(container, orient="vertical", command=self.table.yview)
+        scrollbar.pack(side="right", fill="y")
+        self.table.configure(yscrollcommand=scrollbar.set)
+
+        self.table.bind("<<TreeviewSelect>>", self.fill_fields)
 
         self.load_apartments()
 
     def load_apartments(self):
-
-        self.listbox.delete(0, tk.END)
+        for row in self.table.get_children():
+            self.table.delete(row)
 
         apartments = ApartmentController.get_all_apartments()
 
-        for a in apartments:
-            self.listbox.insert(tk.END, f"ID:{a[0]} | {a[1]} | {a[2]} | Rent:{a[3]} | {a[4]}")
+        for apt in apartments:
+            self.table.insert("", tk.END, values=(
+                apt["apartmentID"],
+                apt["city"],
+                apt["type"],
+                apt["rent"],
+                apt["rooms"]
+            ))
 
-    def go_back(self, root):
+    def fill_fields(self, event):
+        selected = self.table.selection()
+        if not selected:
+            return
 
-        from views.dashboard_view import DashboardView
+        values = self.table.item(selected[0], "values")
 
-        for widget in root.winfo_children():
-            widget.destroy()
+        # set dropdown (city)
+        self.location_combo.set(values[1])
 
-        DashboardView(root)
+        self.type.delete(0, tk.END)
+        self.type.insert(0, values[2])
+
+        self.rent.delete(0, tk.END)
+        self.rent.insert(0, values[3])
+
+        self.rooms.delete(0, tk.END)
+        self.rooms.insert(0, values[4])
+
+        self.update_btn.config(state="normal")
+        self.delete_btn.config(state="normal")
+
+    def add_apartment(self):
+        selected_city = self.location_combo.get()
+        location_id = self.location_map[selected_city]
+
+        apt_type = self.type.get()
+        rent = self.rent.get()
+        rooms = self.rooms.get()
+
+        if not selected_city or not apt_type or not rent or not rooms:
+            messagebox.showerror("Error", "All fields are required")
+            return
+
+        ApartmentController.add_apartment(
+            location_id,
+            apt_type,
+            rent,
+            rooms
+        )
+
+        messagebox.showinfo("Success", "Apartment added")
+
+        self.load_apartments()
+        self.clear_fields()
+
+    def update_apartment(self):
+        selected = self.table.selection()
+        if not selected:
+            return
+
+        apt_id = self.table.item(selected[0], "values")[0]
+
+        selected_city = self.location_combo.get()
+        location_id = self.location_map[selected_city]
+
+        ApartmentController.update_apartment(
+            apt_id,
+            location_id,
+            self.type.get(),
+            self.rent.get(),
+            self.rooms.get()
+        )
+
+        messagebox.showinfo("Updated", "Apartment updated")
+        self.load_apartments()
+
+    def delete_apartment(self):
+        selected = self.table.selection()
+        if not selected:
+            return
+
+        apt_id = self.table.item(selected[0], "values")[0]
+
+        ApartmentController.delete_apartment(apt_id)
+        messagebox.showinfo("Deleted", "Apartment deleted")
+        self.load_apartments()
+
+    def search_apartment(self):
+        keyword = self.search_entry.get()
+
+        for row in self.table.get_children():
+            self.table.delete(row)
+
+        results = ApartmentController.search_apartment(keyword)
+
+        for apt in results:
+            self.table.insert("", tk.END, values=(
+                apt["apartmentID"],
+                apt["city"],  
+                apt["type"],
+                apt["rent"],
+                apt["rooms"]
+            ))
+
+    def load_locations(self):
+        locations = LocationDAO.get_all_locations()
+
+        # store mapping: city → id
+        self.location_map = {loc["city"]: loc["location_id"] for loc in locations}
+
+        # show city names
+        self.location_combo["values"] = list(self.location_map.keys())
+
+        if locations:
+            self.location_combo.current(0)  # select first by default   
+
+    def clear_fields(self):
+        self.location_combo.set("") 
+        self.type.delete(0, tk.END)
+        self.rent.delete(0, tk.END)
+        self.rooms.delete(0, tk.END)
+
+        self.update_btn.config(state="disabled")
+        self.delete_btn.config(state="disabled")

@@ -1,10 +1,16 @@
 PRAGMA foreign_keys = ON;
 
+-- =========================
+-- Roles Table
+-- =========================
 CREATE TABLE IF NOT EXISTS roles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     role_name TEXT NOT NULL UNIQUE
 );
 
+-- =========================
+-- Users Table
+-- =========================
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     full_name TEXT NOT NULL,
@@ -14,5 +20,15 @@ CREATE TABLE IF NOT EXISTS users (
     location TEXT,
     is_active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL,
-    FOREIGN KEY (role_id) REFERENCES roles(id)
+
+    FOREIGN KEY (role_id) 
+        REFERENCES roles(id)
+        ON DELETE RESTRICT
+        ON UPDATE CASCADE
 );
+
+-- =========================
+-- Index for performance
+-- =========================
+CREATE INDEX IF NOT EXISTS idx_users_role_id 
+ON users(role_id);

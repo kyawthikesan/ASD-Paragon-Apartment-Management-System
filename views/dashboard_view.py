@@ -4,7 +4,8 @@ from controllers.auth_controller import AuthController
 
 
 class DashboardView(ttk.Frame):
-    def __init__(self, parent, on_logout, open_user_management):
+    def __init__(self, parent, on_logout, open_user_management,
+             open_tenant_management, open_apartment_management, open_lease_management):
         super().__init__(parent, padding=20)
         self.grid(sticky="nsew")
 
@@ -31,6 +32,28 @@ class DashboardView(ttk.Frame):
                 command=open_user_management
             ).grid(row=row_num, column=0, sticky="w", pady=5)
             row_num += 1
+
+        #Member_2
+        ttk.Button(
+            self,
+            text="Tenant Management",
+            command=open_tenant_management
+        ).grid(row=row_num, column=0, sticky="w", pady=5)
+        row_num += 1
+
+        ttk.Button(
+            self,
+            text="Apartment Management",
+            command=open_apartment_management
+        ).grid(row=row_num, column=0, sticky="w", pady=5)
+        row_num += 1
+
+        ttk.Button(
+            self,
+            text="Lease Management",
+            command=open_lease_management
+        ).grid(row=row_num, column=0, sticky="w", pady=5)
+        row_num += 1
 
         ttk.Button(
             self,

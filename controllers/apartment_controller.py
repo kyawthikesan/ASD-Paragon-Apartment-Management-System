@@ -1,31 +1,24 @@
-from database.database import get_connection
+from dao.apartment_dao import ApartmentDAO
 
 
 class ApartmentController:
 
     @staticmethod
-    def add_apartment(city, apt_type, rent, status):
-
-        conn = get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            "INSERT INTO apartments (city, type, rent, status) VALUES (?, ?, ?, ?)",
-            (city, apt_type, rent, status)
-        )
-
-        conn.commit()
-        conn.close()
+    def add_apartment(locationID, type, rent, rooms):
+        ApartmentDAO.add_apartment(locationID, type, rent, rooms)
 
     @staticmethod
     def get_all_apartments():
+        return ApartmentDAO.get_all_apartments()
 
-        conn = get_connection()
-        cursor = conn.cursor()
+    @staticmethod
+    def update_apartment(apartmentID, locationID, type, rent, rooms):
+        ApartmentDAO.update_apartment(apartmentID, locationID, type, rent, rooms)
 
-        cursor.execute("SELECT * FROM apartments")
-        apartments = cursor.fetchall()
+    @staticmethod
+    def delete_apartment(apartmentID):
+        ApartmentDAO.delete_apartment(apartmentID)
 
-        conn.close()
-
-        return apartments
+    @staticmethod
+    def search_apartment(keyword):
+        return ApartmentDAO.search_apartment(keyword)

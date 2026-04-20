@@ -1,9 +1,9 @@
-from database.database import get_connection
+from database.db_manager import DBManager
 
 class LoginController:
     @staticmethod
     def authenticate(username, password):
-        conn = get_connection()
+        conn = DBManager.get_connection()
         cursor = conn.cursor()
 
         cursor.execute(
