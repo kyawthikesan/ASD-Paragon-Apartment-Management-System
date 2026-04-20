@@ -7,7 +7,7 @@ class DashboardView(ttk.Frame):
     def __init__(self, parent, on_logout, open_user_management,
              open_tenant_management, open_apartment_management, open_lease_management):
         super().__init__(parent, padding=20)
-        self.grid(sticky="nsew")
+        self.pack(fill="both", expand=True)
 
         current_user = AuthController.current_user
         role = current_user["role_name"]
@@ -33,27 +33,27 @@ class DashboardView(ttk.Frame):
             ).grid(row=row_num, column=0, sticky="w", pady=5)
             row_num += 1
 
-        #Member_2
-        ttk.Button(
-            self,
-            text="Tenant Management",
-            command=open_tenant_management
-        ).grid(row=row_num, column=0, sticky="w", pady=5)
-        row_num += 1
+        if role in {"admin", "manager", "front_desk"}:
+            ttk.Button(
+                self,
+                text="Tenant Management",
+                command=open_tenant_management
+            ).grid(row=row_num, column=0, sticky="w", pady=5)
+            row_num += 1
 
-        ttk.Button(
-            self,
-            text="Apartment Management",
-            command=open_apartment_management
-        ).grid(row=row_num, column=0, sticky="w", pady=5)
-        row_num += 1
+            ttk.Button(
+                self,
+                text="Apartment Management",
+                command=open_apartment_management
+            ).grid(row=row_num, column=0, sticky="w", pady=5)
+            row_num += 1
 
-        ttk.Button(
-            self,
-            text="Lease Management",
-            command=open_lease_management
-        ).grid(row=row_num, column=0, sticky="w", pady=5)
-        row_num += 1
+            ttk.Button(
+                self,
+                text="Lease Management",
+                command=open_lease_management
+            ).grid(row=row_num, column=0, sticky="w", pady=5)
+            row_num += 1
 
         ttk.Button(
             self,
