@@ -125,3 +125,45 @@ class UserDAO:
             conn.commit()
         finally:
             conn.close()
+
+    @staticmethod
+    def update_user(user_id: int, full_name: str, username: str, role_name: str,
+                    location: str | None, is_active: int, password: str | None = None) -> None:
+        conn = DBManager.get_connection()
+        try:
+            role = conn.execute(
+                "SELECT id FROM roles WHERE role_name = ?",
+                (role_name,)
+            ).fetchone()
+            if role is None:
+                raise ValueError(f"Role '{role_name}' does not exist.")
+
+            params = [full_name, username, role["id"], location, is_active]
+            set_clause = """
+                full_name = ?,
+                username = ?,
+                role_id = ?,
+                location = ?,
+                is_active = ?
+            """
+
+            # Password is optional during edit; keep current hash when left blank.
+            if password:
+                set_clause += ", password_hash = ?"
+                params.append(hash_password(password))
+
+            params.append(user_id)
+
+            try:
+                conn.execute(
+                    f"UPDATE users SET {set_clause} WHERE id = ?",
+                    tuple(params)
+                )
+            except sqlite3.IntegrityError as error:
+                if "users.username" in str(error) or "UNIQUE constraint failed: users.username" in str(error):
+                    raise ValueError("Username already exists.") from error
+                raise
+
+            conn.commit()
+        finally:
+            conn.close()
