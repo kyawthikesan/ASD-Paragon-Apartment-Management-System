@@ -10,30 +10,51 @@ from controllers.auth_controller import AuthController
 class PAMSApp(tk.Tk):
     def __init__(self):
         super().__init__()
+
         self.title("Paragon Apartment Management System")
-        self.geometry("800x500")
-        self.configure(bg="#f5f1eb")
+        self.configure(bg="#1C1A17")          # deep black-brown — matches LoginView canvas
+        self.center_window(1100, 700)
+        self.minsize(950, 600)
+
+        # Window icon (optional — place logo.ico or logo.png in images/)
+        try:
+            self.iconbitmap("images/logo.ico")
+        except Exception:
+            try:
+                from PIL import Image, ImageTk
+                icon = Image.open("images/logo.png").resize((32, 32))
+                self._icon = ImageTk.PhotoImage(icon)
+                self.iconphoto(True, self._icon)
+            except Exception:
+                pass                          # no icon — silently skip
+
+        self.current_view = None
 
         DBManager.initialise_database()
         UserDAO.seed_roles()
         self.ensure_default_admin()
 
-        self.current_view = None
         self.show_login()
+
+    def center_window(self, width, height):
+        self.update_idletasks()
+        screen_width  = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        x = (screen_width  // 2) - (width  // 2)
+        y = (screen_height // 2) - (height // 2)
+        self.geometry(f"{width}x{height}+{x}+{y}")
 
     def clear_view(self):
         for widget in self.winfo_children():
             widget.destroy()
 
     def show_login(self):
+        self.configure(bg="#1C1A17")          # dark canvas for login
         self.clear_view()
-
-        container = tk.Frame(self, bg="#f5f1eb")
-        container.pack(expand=True, fill="both")
-
-        self.current_view = LoginView(container, self.show_dashboard)
+        self.current_view = LoginView(self, self.show_dashboard)
 
     def show_dashboard(self):
+        self.configure(bg="#1C1A17")          # keep consistent; dashboard sets its own bg
         self.clear_view()
         self.current_view = DashboardView(
             self,
@@ -50,14 +71,17 @@ class PAMSApp(tk.Tk):
         self.show_login()
 
     def ensure_default_admin(self):
-        if UserDAO.get_user_by_username("admin") is None:
-            UserDAO.create_user(
-                full_name="System Administrator",
-                username="admin",
-                password="admin123",
-                role_name="admin",
-                location="Bristol"
-            )
+        try:
+            if UserDAO.get_user_by_username("admin") is None:
+                UserDAO.create_user(
+                    full_name="System Administrator",
+                    username="admin",
+                    password="admin123",
+                    role_name="admin",
+                    location="Bristol"
+                )
+        except Exception as e:
+            print("Error creating default admin:", e)
 
 
 if __name__ == "__main__":
