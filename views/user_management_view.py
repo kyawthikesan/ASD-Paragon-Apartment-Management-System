@@ -26,21 +26,30 @@ class UserManagementView(ttk.Frame):
         self.password_entry.grid(row=3, column=1, pady=5)
 
         ttk.Label(self, text="Role").grid(row=4, column=0, sticky="w")
+        self.role_values = UserDAO.get_roles()
         self.role_combo = ttk.Combobox(
             self,
-            values=["admin", "front_desk", "finance", "maintenance", "manager"],
+            values=self.role_values,
             state="readonly",
             width=27
         )
         self.role_combo.grid(row=4, column=1, pady=5)
-        self.role_combo.current(0)
+        if self.role_values:
+            self.role_combo.current(0)
 
         ttk.Label(self, text="Location").grid(row=5, column=0, sticky="w")
         self.location_entry = ttk.Entry(self, width=30)
         self.location_entry.grid(row=5, column=1, pady=5)
 
+        self.active_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            self,
+            text="Active account",
+            variable=self.active_var
+        ).grid(row=6, column=1, sticky="w", pady=(2, 6))
+
         ttk.Button(self, text="Create User", command=self.create_user).grid(
-            row=6, column=0, columnspan=2, pady=10
+            row=7, column=0, columnspan=2, pady=10
         )
 
         self.tree = ttk.Treeview(
@@ -51,31 +60,57 @@ class UserManagementView(ttk.Frame):
         )
         for col in ("ID", "Name", "Username", "Role", "Location", "Active"):
             self.tree.heading(col, text=col)
-        self.tree.grid(row=7, column=0, columnspan=2, pady=10)
+        self.tree.grid(row=8, column=0, columnspan=2, pady=10)
 
         ttk.Button(self, text="Deactivate Selected", command=self.deactivate_selected).grid(
-            row=8, column=0, sticky="w", pady=5
+            row=9, column=0, sticky="w", pady=5
         )
 
         ttk.Button(self, text="Back", command=self.go_back).grid(
-            row=8, column=1, sticky="e", pady=5
+            row=9, column=1, sticky="e", pady=5
         )
 
         self.load_users()
 
     def create_user(self):
+        full_name = self.full_name_entry.get().strip()
+        username = self.username_entry.get().strip()
+        password = self.password_entry.get().strip()
+        role_name = self.role_combo.get().strip()
+        location = self.location_entry.get().strip() or None
+        is_active = 1 if self.active_var.get() else 0
+
+        if not full_name or not username or not password or not role_name:
+            messagebox.showerror("Error", "Full name, username, password, and role are required.")
+            return
+
+        if len(password) < 6:
+            messagebox.showerror("Error", "Password must be at least 6 characters.")
+            return
+
         try:
             UserDAO.create_user(
-                self.full_name_entry.get().strip(),
-                self.username_entry.get().strip(),
-                self.password_entry.get().strip(),
-                self.role_combo.get(),
-                self.location_entry.get().strip() or None
+                full_name,
+                username,
+                password,
+                role_name,
+                location,
+                is_active
             )
             messagebox.showinfo("Success", "User created successfully.")
+            self._reset_form()
             self.load_users()
         except Exception as error:
             messagebox.showerror("Error", str(error))
+
+    def _reset_form(self):
+        self.full_name_entry.delete(0, tk.END)
+        self.username_entry.delete(0, tk.END)
+        self.password_entry.delete(0, tk.END)
+        self.location_entry.delete(0, tk.END)
+        self.active_var.set(True)
+        if self.role_values:
+            self.role_combo.current(0)
 
     def load_users(self):
         for item in self.tree.get_children():
