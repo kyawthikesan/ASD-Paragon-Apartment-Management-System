@@ -69,12 +69,33 @@ Responsible for database design, data handling, query implementation, and backen
 Responsible for testing system functions, identifying bugs, supporting debugging, and preparing documentation.
 
 
-## To run the project:
-- Ensure Python 3 is installed on your computer
-- Download or clone the project files
-- Open the project folder in your preferred code editor or terminal
-- Run the application using:
-- python main.py
+## Setup Instructions
+
+### 1. Clone or download the project
+Clone the repository or download the ZIP file, then open the project folder.
+
+```bash
+git clone <your-repository-url>
+cd ASD-Paragon-Apartment-Management-System-PAMS-
+2. Create a virtual environment
+macOS / Linux
+python3 -m venv venv
+source venv/bin/activate
+Windows (PowerShell)
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+
+If PowerShell blocks activation, run:
+
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+3. Install the required packages
+pip install -r requirements.txt
+4. Run the application
+python main.py
+5. Database notes
+The system uses a local SQLite database file called pams.db
+If pams.db does not already exist, the application will automatically initialise the database
+Some seed data may also be loaded from database/seed.sql
 
 ## Default Login Accounts
 The system includes the following default user accounts for testing:
@@ -83,21 +104,6 @@ The system includes the following default user accounts for testing:
 Username: admin
 Password: admin123
 
-** Front-desk Staff **
-Username: frontdesk1
-Password: fd123
-
-** Finance Manager **
-Username: finance1
-Password: fin123
-
-** Maintenance Staff **
-Username: maint1
-Password: mt123
-
-** Manager **
-Username: manager1
-Password: mgr123
 
 ## Future Improvements
 The following features may be implemented in future versions:

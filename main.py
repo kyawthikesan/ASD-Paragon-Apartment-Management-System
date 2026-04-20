@@ -18,6 +18,7 @@ from styles.ttk_theme import apply_ttk_theme
 from styles.colors import LEFT_BG, BG_MAIN
 import os
 
+
 class PAMSApp(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -39,7 +40,7 @@ class PAMSApp(tk.Tk):
                 self._icon = ImageTk.PhotoImage(icon)
                 self.iconphoto(True, self._icon)
             except Exception:
-                pass                          
+                pass
 
         self.current_view = None
 
@@ -56,9 +57,9 @@ class PAMSApp(tk.Tk):
 
     def center_window(self, width, height):
         self.update_idletasks()
-        screen_width  = self.winfo_screenwidth()
+        screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
-        x = (screen_width  // 2) - (width  // 2)
+        x = (screen_width // 2) - (width // 2)
         y = (screen_height // 2) - (height // 2)
         self.geometry(f"{width}x{height}+{x}+{y}")
 
@@ -115,16 +116,27 @@ class PAMSApp(tk.Tk):
                 self.show_user_management,
                 self.show_tenant_management,
                 self.show_apartment_management,
-                self.show_lease_management
+                self.show_lease_management,
+                self.show_finance_dashboard
             )
+        
+            
         except Exception as error:
             details = traceback.format_exc(limit=8)
             fallback = ttk.Frame(self, padding=24)
             fallback.pack(fill="both", expand=True)
-            ttk.Label(fallback, text="Dashboard failed to load", font=("Arial", 14, "bold")).pack(anchor="w", pady=(0, 8))
+            ttk.Label(
+                fallback,
+                text="Dashboard failed to load",
+                font=("Arial", 14, "bold")
+            ).pack(anchor="w", pady=(0, 8))
             ttk.Label(fallback, text=str(error)).pack(anchor="w", pady=(0, 8))
             ttk.Label(fallback, text=details).pack(anchor="w")
-            ttk.Button(fallback, text="Back to Login", command=self.logout).pack(anchor="w", pady=(12, 0))
+            ttk.Button(
+                fallback,
+                text="Back to Login",
+                command=self.logout
+            ).pack(anchor="w", pady=(12, 0))
             self.current_view = fallback
 
     def show_admin_dashboard(self):
@@ -136,25 +148,58 @@ class PAMSApp(tk.Tk):
     def show_front_desk_dashboard(self):
         self.show_dashboard()
 
-    def show_finance_dashboard(self):
-        self._show_role_view(FinanceDashboardView, "Finance Dashboard")
+    def show_finance_dashboard(self, initial_tab="Invoices"):
+        self._show_role_view(
+            FinanceDashboardView,
+            "Finance Dashboard",
+            initial_tab=initial_tab
+        )
+
+    def show_finance_payments(self):
+        self.show_finance_dashboard("Payments")
+
+    def show_finance_reports(self):
+        self.show_finance_dashboard("Reports")
 
     def show_maintenance_dashboard(self):
         self._show_role_view(MaintenanceDashboardView, "Maintenance Dashboard")
 
-    def _show_role_view(self, view_class, view_name: str):
+    def _show_role_view(self, view_class, view_name: str, **view_kwargs):
         self.clear_view()
         try:
-            self.current_view = view_class(self, self.logout)
+            self.current_view = view_class(
+                self,
+                self.logout,
+                self.route_dashboard_by_role,
+                **view_kwargs
+            )
         except Exception as error:
-            # Keep the app usable and show a readable failure instead of a blank window.
             details = traceback.format_exc(limit=8)
             fallback = ttk.Frame(self, padding=24)
             fallback.pack(fill="both", expand=True)
-            ttk.Label(fallback, text=f"{view_name} failed to load", font=("Arial", 14, "bold")).pack(anchor="w", pady=(0, 8))
-            ttk.Label(fallback, text=str(error)).pack(anchor="w", pady=(0, 8))
-            ttk.Label(fallback, text=details).pack(anchor="w")
-            ttk.Button(fallback, text="Back to Login", command=self.logout).pack(anchor="w", pady=(12, 0))
+
+            ttk.Label(
+                fallback,
+                text=f"{view_name} failed to load",
+                font=("Arial", 14, "bold")
+            ).pack(anchor="w", pady=(0, 8))
+
+            ttk.Label(
+                fallback,
+                text=str(error)
+            ).pack(anchor="w", pady=(0, 8))
+
+            ttk.Label(
+                fallback,
+                text=details
+            ).pack(anchor="w")
+
+            ttk.Button(
+                fallback,
+                text="Back to Login",
+                command=self.logout
+            ).pack(anchor="w", pady=(12, 0))
+
             self.current_view = fallback
 
     def _require_feature_access(self, feature_key: str, feature_name: str) -> bool:
@@ -164,7 +209,7 @@ class PAMSApp(tk.Tk):
 
         self._show_access_denied_modal(feature_name)
         return False
-    
+
     def _show_access_denied_modal(self, feature_name: str):
         root = self
 
@@ -219,13 +264,9 @@ class PAMSApp(tk.Tk):
             if current_y is None:
                 current_y = modal.winfo_y()
 
-            # decrease opacity
             alpha -= 0.10
-
-            # move slightly down
             current_y += 2
 
-            # if fully invisible → destroy
             if alpha <= 0:
                 finish_and_refresh()
                 return
@@ -235,17 +276,12 @@ class PAMSApp(tk.Tk):
             except Exception:
                 pass
 
-            # update position
             modal.geometry(f"{width}x{height}+{final_x}+{current_y}")
-
-            # loop animation
             modal.after(16, lambda: fade_out(alpha, current_y))
 
-        # Button handler
         def close_modal():
             fade_out()
 
-        # Outer shadow frame
         shadow = ctk.CTkFrame(
             modal,
             fg_color="#000000",
@@ -253,19 +289,21 @@ class PAMSApp(tk.Tk):
         )
         shadow.pack(fill="both", expand=True)
 
-        # Main card (actual popup)
         card = ctk.CTkFrame(
             shadow,
             fg_color="#F7F7FA",
             corner_radius=28,
         )
-        card.place(relx=0.5, rely=0.5, anchor="center",
-                relwidth=0.965, relheight=0.965)
+        card.place(
+            relx=0.5,
+            rely=0.5,
+            anchor="center",
+            relwidth=0.965,
+            relheight=0.965
+        )
 
-        # top spacing
         ctk.CTkFrame(card, fg_color="transparent", height=20).pack()
 
-        # Icon container (circle)
         icon_circle = ctk.CTkFrame(
             card,
             width=110,
@@ -276,7 +314,6 @@ class PAMSApp(tk.Tk):
         icon_circle.pack(pady=(10, 10))
         icon_circle.pack_propagate(False)
 
-        # Try loading custom image icon
         try:
             from PIL import Image, ImageTk
             icon_path = os.path.join("images", "icons", "access_denied.png")
@@ -292,12 +329,10 @@ class PAMSApp(tk.Tk):
                     bd=0,
                     highlightthickness=0
                 )
-                label.image = icon_img  # keep reference
+                label.image = icon_img
                 label.pack(expand=True)
             else:
                 raise FileNotFoundError
-
-        # Fallback icon if image fails
         except Exception:
             tk.Label(
                 icon_circle,
@@ -308,7 +343,6 @@ class PAMSApp(tk.Tk):
                 bd=0,
             ).pack(expand=True)
 
-        # Title text
         ctk.CTkLabel(
             card,
             text=f"{feature_name} is not\navailable for your role.",
@@ -317,17 +351,15 @@ class PAMSApp(tk.Tk):
             justify="center",
         ).pack(pady=(20, 10))
 
-        # Subtitle text
         ctk.CTkLabel(
             card,
             text="You don't have permission to access this section.\n"
-                "Please contact your administrator for more information.",
+                 "Please contact your administrator for more information.",
             text_color="#6E7893",
             font=("Arial", 13),
             justify="center",
         ).pack(pady=(0, 20))
 
-        # OK Button
         ctk.CTkButton(
             card,
             text="OK",
@@ -341,14 +373,10 @@ class PAMSApp(tk.Tk):
             width=260,
         ).pack(pady=(10, 20))
 
-        # Close with ESC
         modal.bind("<Escape>", lambda e: close_modal())
-
-        # bring to front
         modal.lift()
         modal.focus_force()
 
-        # Fade IN animation
         def fade_in(alpha=0.0, current_y=None):
             if current_y is None:
                 current_y = start_y
@@ -356,7 +384,6 @@ class PAMSApp(tk.Tk):
             alpha += 0.10
             next_y = current_y - 2
 
-            # clamp values
             if alpha >= 1.0:
                 alpha = 1.0
                 next_y = final_y
@@ -368,11 +395,9 @@ class PAMSApp(tk.Tk):
 
             modal.geometry(f"{width}x{height}+{final_x}+{next_y}")
 
-            # continue animation
             if alpha < 1.0:
                 modal.after(16, lambda: fade_in(alpha, next_y))
 
-        # start animation
         fade_in()
 
     def show_user_management(self):
@@ -387,13 +412,11 @@ class PAMSApp(tk.Tk):
         self.clear_view()
         self.current_view = TenantView(self, self.show_dashboard)
 
-
     def show_apartment_management(self):
         if not self._require_feature_access("apartment_management", "Apartment Management"):
             return
         self.clear_view()
         self.current_view = ApartmentView(self, self.show_dashboard)
-
 
     def show_lease_management(self):
         if not self._require_feature_access("lease_management", "Lease Management"):

@@ -1,6 +1,7 @@
 import os
 from datetime import date, datetime
 import tkinter as tk
+from dao.report_dao import ReportDAO
 
 import customtkinter as ctk
 
@@ -28,6 +29,7 @@ class DashboardView(tk.Frame):
         open_tenant_management,
         open_apartment_management,
         open_lease_management,
+        open_finance_dashboard,
     ):
         super().__init__(parent, bg="#FAF7F2")
         self.pack(fill="both", expand=True)
@@ -37,39 +39,56 @@ class DashboardView(tk.Frame):
         self.full_name = self._row_value(self.current_user, "full_name", "User")
         self.location = self._row_value(self.current_user, "location", "All Cities")
         self.occupancy_filter = "All Cities"
+
         self.open_lease_management = open_lease_management
+        self.open_finance_dashboard = open_finance_dashboard
 
         self._load_dashboard_data()
 
         nav_sections = [
-            {"title": "Overview", "items": [
-                {"label": "Dashboard", "action": lambda: None, "icon": "dashboard"}
-            ]},
-            {"title": "Management", "items": []},
             {
-                "title": "Finance",
+                "title": "Overview",
                 "items": [
-                    {"label": "Payments", "action": lambda: None, "icon": "payments"},
-                    {"label": "Reports", "action": lambda: None, "icon": "reports"},
+                    {"label": "Dashboard", "action": lambda: None, "icon": "dashboard"}
                 ],
             },
+            {"title": "Management", "items": []},
+            {"title": "Finance", "items": []},
             {"title": "Admin", "items": []},
         ]
 
         if AuthController.can_access_feature("tenant_management", self.role):
-            nav_sections[1]["items"].append({"label": "Tenants", "action": open_tenant_management, "icon": "tenants"})
+            nav_sections[1]["items"].append(
+                {"label": "Tenants", "action": open_tenant_management, "icon": "tenants"}
+            )
 
         if AuthController.can_access_feature("apartment_management", self.role):
-            nav_sections[1]["items"].append({"label": "Apartments", "action": open_apartment_management, "icon": "apartments"})
+            nav_sections[1]["items"].append(
+                {"label": "Apartments", "action": open_apartment_management, "icon": "apartments"}
+            )
 
         if AuthController.can_access_feature("lease_management", self.role):
-            nav_sections[1]["items"].append({"label": "Leases", "action": open_lease_management, "icon": "leases"})
-        # Keep User Access visible in sidebar for consistent navigation; guard logic still controls access.
-        nav_sections[3]["items"].append({
-            "label": "User Access",
-            "action": open_user_management,
-            "icon": "shield"
-        })
+            nav_sections[1]["items"].append(
+                {"label": "Leases", "action": open_lease_management, "icon": "leases"}
+            )
+
+        if (AuthController.can_access_feature("payment_management", self.role)
+            or AuthController.can_access_feature("reports", self.role)
+        ):
+            nav_sections[2]["items"].append(
+                {"label": "Payments & Reports", "action": open_finance_dashboard, "icon": "payments"}
+            )
+            
+
+        # Keep User Access visible in sidebar for consistent navigation;
+        # guard logic still controls access.
+        nav_sections[3]["items"].append(
+            {
+                "label": "User Access",
+                "action": open_user_management,
+                "icon": "shield",
+            }
+        )
 
         self.shell = PremiumAppShell(
             self,
@@ -127,8 +146,6 @@ class DashboardView(tk.Frame):
             return 0 <= (end_date - date.today()).days <= 30
         except Exception:
             return False
-        
-    
 
     def _load_dashboard_data(self):
         self.apartments = ApartmentDAO.get_all_apartments()
@@ -137,14 +154,29 @@ class DashboardView(tk.Frame):
         self.requests = MaintenanceController.get_all_requests()
         self.payments = PaymentController.get_all_payments()
 
-        self.open_requests = [r for r in self.requests if self._row_value(r, "status", "") != "Resolved"]
-        self.high_priority_requests = [
-            r for r in self.open_requests if self._row_value(r, "priority", "") in {"High", "Urgent"}
+        self.open_requests = [
+            r for r in self.requests
+            if str(self._row_value(r, "status", "")).strip().lower() != "resolved"
         ]
-        self.overdue_payments = [p for p in self.payments if self._row_value(p, "status", "") == "Overdue"]
-        self.expiring_leases = [l for l in self.leases if self._is_expiring_soon(self._row_value(l, "end_date", ""))]
 
-        self.attention_count = len(self.high_priority_requests) + len(self.overdue_payments) + len(self.expiring_leases)
+        self.high_priority_requests = [
+            r for r in self.open_requests
+            if str(self._row_value(r, "priority", "")).strip().lower() in {"high", "urgent"}
+        ]
+
+        # Use finance report data for overdue/late invoices instead of payment rows
+        self.overdue_payments = ReportDAO.get_late_invoices()
+
+        self.expiring_leases = [
+            l for l in self.leases
+            if self._is_expiring_soon(self._row_value(l, "end_date", ""))
+        ]
+
+        self.attention_count = (
+            len(self.high_priority_requests)
+            + len(self.overdue_payments)
+            + len(self.expiring_leases)
+        )
         self.filtered_leases = list(self.leases)
 
         city_totals = {}
@@ -152,6 +184,7 @@ class DashboardView(tk.Frame):
             city = str(self._row_value(apt, "city", "Unknown")).strip()
             if city:
                 city_totals[city] = city_totals.get(city, 0) + 1
+
         self.occupancy_options = ["All Cities"] + sorted(city_totals.keys())
 
     def _build_banner(self, parent, open_tenant_management):
@@ -206,18 +239,39 @@ class DashboardView(tk.Frame):
         for col in range(4):
             stats_wrap.grid_columnconfigure(col, weight=1)
 
-        paid_total = sum(
-            float(self._row_value(p, "amount", 0) or 0)
-            for p in self.payments
-            if self._row_value(p, "status", "") == "Paid"
-        )
-        occupied = len([a for a in self.apartments if self._row_value(a, "status", "") == "Occupied"])
+        summary = ReportDAO.get_overall_financial_summary()
+        paid_total = float(summary["total_collected"] or 0)
+
+        occupied = len([
+            a for a in self.apartments
+            if str(self._row_value(a, "status", "")).strip().lower() == "occupied"
+        ])
 
         stats = [
-            {"label": "TOTAL UNITS", "value": str(len(self.apartments)), "sub": f"{occupied} occupied", "icon": "totalunits"},
-            {"label": "ACTIVE TENANTS", "value": str(len(self.tenants)), "sub": f"{len(self.expiring_leases)} expiring soon", "icon": "activetenants"},
-            {"label": "RENT COLLECTED", "value": f"£{paid_total:,.0f}", "sub": f"{len(self.overdue_payments)} overdue payments", "icon": "rentcollected"},
-            {"label": "OPEN ISSUES", "value": str(len(self.open_requests)), "sub": f"{len(self.high_priority_requests)} high priority", "icon": "openissues"},
+            {
+                "label": "TOTAL UNITS",
+                "value": str(len(self.apartments)),
+                "sub": f"{occupied} occupied",
+                "icon": "totalunits",
+            },
+            {
+                "label": "ACTIVE TENANTS",
+                "value": str(len(self.tenants)),
+                "sub": f"{len(self.expiring_leases)} expiring soon",
+                "icon": "activetenants",
+            },
+            {
+                "label": "RENT COLLECTED",
+                "value": f"£{paid_total:,.0f}",
+                "sub": f"{len(self.overdue_payments)} overdue payments",
+                "icon": "rentcollected",
+            },
+            {
+                "label": "OPEN ISSUES",
+                "value": str(len(self.open_requests)),
+                "sub": f"{len(self.high_priority_requests)} high priority",
+                "icon": "openissues",
+            },
         ]
 
         for idx, item in enumerate(stats):
@@ -250,7 +304,13 @@ class DashboardView(tk.Frame):
 
             stat_icon = self._load_local_icon(item["icon"], size=(24, 24))
             if stat_icon:
-                icon_label = tk.Label(icon_box, image=stat_icon, bg="#F1E6D3", bd=0, highlightthickness=0)
+                icon_label = tk.Label(
+                    icon_box,
+                    image=stat_icon,
+                    bg="#F1E6D3",
+                    bd=0,
+                    highlightthickness=0
+                )
                 icon_label.image = stat_icon
                 icon_label.pack(expand=True)
             else:
@@ -287,7 +347,6 @@ class DashboardView(tk.Frame):
                 font=("Arial", 13),
                 anchor="w",
             ).pack(fill="x", pady=(8, 0))
-
 
     def _build_main_panels(self, parent):
         main = ctk.CTkFrame(parent, fg_color="#FAF7F2", corner_radius=0)
@@ -593,7 +652,7 @@ class DashboardView(tk.Frame):
     def _on_occupancy_selected(self, selected_value):
         self.occupancy_filter = selected_value
         self._build_occupancy(self._occupancy_parent)
-
+        
     def _build_occupancy(self, parent):
         if hasattr(self, "_occupancy_body") and self._occupancy_body.winfo_exists():
             self._occupancy_body.destroy()
@@ -611,7 +670,8 @@ class DashboardView(tk.Frame):
         for apt in self.apartments:
             city = str(self._row_value(apt, "city", "Unknown")).strip()
             city_totals[city] = city_totals.get(city, 0) + 1
-            if self._row_value(apt, "status", "") == "Occupied":
+
+            if str(self._row_value(apt, "status", "")).strip().lower() == "occupied":
                 city_occupied[city] = city_occupied.get(city, 0) + 1
 
         all_cities = sorted(city_totals.keys())
@@ -639,8 +699,16 @@ class DashboardView(tk.Frame):
             counterclock=False,
             wedgeprops={"width": 0.16, "linewidth": 0},
         )
-        pie_ax.text(0, 0, f"{overall_pct}%", ha="center", va="center",
-                    color="#2C2416", fontsize=18, fontweight="bold")
+        pie_ax.text(
+            0,
+            0,
+            f"{overall_pct}%",
+            ha="center",
+            va="center",
+            color="#2C2416",
+            fontsize=18,
+            fontweight="bold",
+        )
         pie_ax.axis("equal")
         pie_ax.axis("off")
         pie_fig.tight_layout(pad=0.2)
@@ -700,10 +768,21 @@ class DashboardView(tk.Frame):
         for payment in self.payments[:4]:
             payment_date = self._row_value(payment, "payment_date", "")
             stamp = self._format_activity_date(payment_date)
+
+            tenant_name = self._row_value(payment, "tenant_name", f"Tenant #{self._row_value(payment, 'tenantID', '-')}")
+            amount_paid = float(
+                self._row_value(
+                    payment,
+                    "amount_paid",
+                    self._row_value(payment, "amount", 0)
+                ) or 0
+            )
+            payment_method = self._row_value(payment, "payment_method", "Manual")
+
             activity_rows.append(
                 {
-                    "title": f"Payment from tenant #{self._row_value(payment, 'tenantID', '-')}",
-                    "subtitle": f"{self._row_value(payment, 'status', 'Unknown')} · £{float(self._row_value(payment, 'amount', 0) or 0):,.0f}",
+                    "title": f"Payment from {tenant_name}",
+                    "subtitle": f"{payment_method} · £{amount_paid:,.0f}",
                     "stamp": stamp,
                 }
             )
@@ -719,7 +798,12 @@ class DashboardView(tk.Frame):
             )
 
         if not activity_rows:
-            ctk.CTkLabel(body, text="No recent activity yet.", text_color="#6B5D44", font=("Arial", 12)).pack(anchor="w", pady=8)
+            ctk.CTkLabel(
+                body,
+                text="No recent activity yet.",
+                text_color="#6B5D44",
+                font=("Arial", 12),
+            ).pack(anchor="w", pady=8)
             return
 
         for item in activity_rows[:6]:
@@ -728,10 +812,28 @@ class DashboardView(tk.Frame):
 
             left = ctk.CTkFrame(row, fg_color="#FFFFFF", corner_radius=0)
             left.pack(side="left", fill="x", expand=True)
-            ctk.CTkLabel(left, text=item["title"], text_color="#2C2416", font=("Arial", 13, "bold"), anchor="w").pack(fill="x")
-            ctk.CTkLabel(left, text=item["subtitle"], text_color="#8D7E66", font=("Arial", 11), anchor="w").pack(fill="x")
+            ctk.CTkLabel(
+                left,
+                text=item["title"],
+                text_color="#2C2416",
+                font=("Arial", 13, "bold"),
+                anchor="w",
+            ).pack(fill="x")
+            ctk.CTkLabel(
+                left,
+                text=item["subtitle"],
+                text_color="#8D7E66",
+                font=("Arial", 11),
+                anchor="w",
+            ).pack(fill="x")
 
-            ctk.CTkLabel(row, text=item["stamp"], text_color="#A49378", font=("Arial", 11), anchor="e").pack(side="right", padx=(8, 0))
+            ctk.CTkLabel(
+                row,
+                text=item["stamp"],
+                text_color="#A49378",
+                font=("Arial", 11),
+                anchor="e",
+            ).pack(side="right", padx=(8, 0))
             ctk.CTkFrame(body, fg_color="#F1EADF", corner_radius=0, height=1).pack(fill="x", pady=(2, 6))
 
     @staticmethod

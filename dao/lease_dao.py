@@ -27,7 +27,6 @@ class LeaseDAO:
         conn.commit()
         conn.close()
 
-
     # =========================
     # GET ALL LEASES (UI LIST)
     # =========================
@@ -56,6 +55,69 @@ class LeaseDAO:
         conn.close()
         return rows
 
+    # =========================
+    # GET ALL LEASES WITH FINANCIAL DETAILS
+    # =========================
+    @staticmethod
+    def get_all_leases_with_financial_details():
+        conn = DBManager.get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+        SELECT
+            l.leaseID,
+            l.tenantID,
+            t.name AS tenant_name,
+            l.apartmentID,
+            a.type AS apartment_type,
+            a.rent,
+            loc.city,
+            l.start_date,
+            l.end_date,
+            l.status
+        FROM leases l
+        JOIN tenants t ON l.tenantID = t.tenantID
+        JOIN apartments a ON l.apartmentID = a.apartmentID
+        LEFT JOIN locations loc ON a.location_id = loc.location_id
+        ORDER BY l.leaseID DESC
+        """)
+
+        rows = cursor.fetchall()
+        conn.close()
+
+        return [dict(row) for row in rows]
+
+    # =========================
+    # GET ONE LEASE WITH FINANCIAL DETAILS
+    # =========================
+    @staticmethod
+    def get_lease_by_id_with_financial_details(lease_id):
+        conn = DBManager.get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+        SELECT
+            l.leaseID,
+            l.tenantID,
+            t.name AS tenant_name,
+            l.apartmentID,
+            a.type AS apartment_type,
+            a.rent,
+            loc.city,
+            l.start_date,
+            l.end_date,
+            l.status
+        FROM leases l
+        JOIN tenants t ON l.tenantID = t.tenantID
+        JOIN apartments a ON l.apartmentID = a.apartmentID
+        LEFT JOIN locations loc ON a.location_id = loc.location_id
+        WHERE l.leaseID = ?
+        """, (lease_id,))
+
+        row = cursor.fetchone()
+        conn.close()
+
+        return dict(row) if row else None
 
     # =========================
     # CHECK ACTIVE LEASE
@@ -76,7 +138,6 @@ class LeaseDAO:
         conn.close()
         return result is not None
 
-
     # =========================
     # CHECK APARTMENT AVAILABILITY
     # =========================
@@ -96,7 +157,6 @@ class LeaseDAO:
 
         return result and result[0] == "AVAILABLE"
 
-
     # =========================
     # MARK APARTMENT OCCUPIED
     # =========================
@@ -113,7 +173,6 @@ class LeaseDAO:
 
         conn.commit()
         conn.close()
-
 
     # =========================
     # AUTO EXPIRE OLD LEASES
@@ -144,9 +203,8 @@ class LeaseDAO:
         conn.close()
 
     # =========================
-    # TERMINEATE LEASES
+    # TERMINATE LEASE
     # =========================
-
     @staticmethod
     def terminate_lease(lease_id):
         conn = DBManager.get_connection()
@@ -158,7 +216,7 @@ class LeaseDAO:
         JOIN apartments a ON l.apartmentID = a.apartmentID
         WHERE l.leaseID = ?
         """, (lease_id,))
-        
+
         result = cursor.fetchone()
 
         if not result:
