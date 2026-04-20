@@ -1,5 +1,7 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk
+import customtkinter as ctk
+import traceback
 from database.db_manager import DBManager
 from dao.user_dao import UserDAO
 from views.login_view import LoginView
@@ -9,7 +11,11 @@ from controllers.auth_controller import AuthController
 from views.tenant_view import TenantView
 from views.apartment_view import ApartmentView
 from views.lease_view import LeaseView
+from views.payment_view import FinanceDashboardView
+from views.maintenance_view import MaintenanceDashboardView
 from dao.lease_dao import LeaseDAO
+from styles.ttk_theme import apply_ttk_theme
+from styles.colors import LEFT_BG, BG_MAIN
 import os
 
 class PAMSApp(tk.Tk):
@@ -17,9 +23,11 @@ class PAMSApp(tk.Tk):
         super().__init__()
 
         self.title("Paragon Apartment Management System")
-        self.configure(bg="#1C1A17")          # deep black-brown to match login view
+        self.configure(bg=LEFT_BG)
+        apply_ttk_theme(self)
         self.center_window(1100, 700)
-        self.minsize(950, 600)
+        self.minsize(760, 520)
+        self._maximize_window()
 
         # Window icon
         try:
@@ -54,12 +62,30 @@ class PAMSApp(tk.Tk):
         y = (screen_height // 2) - (height // 2)
         self.geometry(f"{width}x{height}+{x}+{y}")
 
+    def _maximize_window(self):
+        # Use platform-specific maximize behavior, then fall back to full screen size.
+        try:
+            self.state("zoomed")
+            return
+        except tk.TclError:
+            pass
+
+        try:
+            self.attributes("-zoomed", True)
+            return
+        except tk.TclError:
+            pass
+
+        width = self.winfo_screenwidth()
+        height = self.winfo_screenheight()
+        self.geometry(f"{width}x{height}+0+0")
+
     def clear_view(self):
         for widget in self.winfo_children():
             widget.destroy()
 
     def show_login(self):
-        self.configure(bg="#1C1A17")          # dark canvas for login
+        self.configure(bg=BG_MAIN)
         self.clear_view()
         self.current_view = LoginView(self, self.route_dashboard_by_role)
 
@@ -80,16 +106,26 @@ class PAMSApp(tk.Tk):
             self.logout()
 
     def show_dashboard(self):
-        self.configure(bg="#1C1A17")          # dashboard sets its own bg
+        self.configure(bg=LEFT_BG)
         self.clear_view()
-        self.current_view = DashboardView(
-            self,
-            self.logout,
-            self.show_user_management,
-            self.show_tenant_management,
-            self.show_apartment_management,
-            self.show_lease_management
-        )
+        try:
+            self.current_view = DashboardView(
+                self,
+                self.logout,
+                self.show_user_management,
+                self.show_tenant_management,
+                self.show_apartment_management,
+                self.show_lease_management
+            )
+        except Exception as error:
+            details = traceback.format_exc(limit=8)
+            fallback = ttk.Frame(self, padding=24)
+            fallback.pack(fill="both", expand=True)
+            ttk.Label(fallback, text="Dashboard failed to load", font=("Arial", 14, "bold")).pack(anchor="w", pady=(0, 8))
+            ttk.Label(fallback, text=str(error)).pack(anchor="w", pady=(0, 8))
+            ttk.Label(fallback, text=details).pack(anchor="w")
+            ttk.Button(fallback, text="Back to Login", command=self.logout).pack(anchor="w", pady=(12, 0))
+            self.current_view = fallback
 
     def show_admin_dashboard(self):
         self.show_dashboard()
@@ -101,62 +137,266 @@ class PAMSApp(tk.Tk):
         self.show_dashboard()
 
     def show_finance_dashboard(self):
-        self._show_role_placeholder("Finance Manager")
+        self._show_role_view(FinanceDashboardView, "Finance Dashboard")
 
     def show_maintenance_dashboard(self):
-        self._show_role_placeholder("Maintenance Staff")
+        self._show_role_view(MaintenanceDashboardView, "Maintenance Dashboard")
 
-    def _show_role_placeholder(self, role_title: str):
-        self.configure(bg="#1C1A17")
+    def _show_role_view(self, view_class, view_name: str):
         self.clear_view()
+        try:
+            self.current_view = view_class(self, self.logout)
+        except Exception as error:
+            # Keep the app usable and show a readable failure instead of a blank window.
+            details = traceback.format_exc(limit=8)
+            fallback = ttk.Frame(self, padding=24)
+            fallback.pack(fill="both", expand=True)
+            ttk.Label(fallback, text=f"{view_name} failed to load", font=("Arial", 14, "bold")).pack(anchor="w", pady=(0, 8))
+            ttk.Label(fallback, text=str(error)).pack(anchor="w", pady=(0, 8))
+            ttk.Label(fallback, text=details).pack(anchor="w")
+            ttk.Button(fallback, text="Back to Login", command=self.logout).pack(anchor="w", pady=(12, 0))
+            self.current_view = fallback
 
-        frame = ttk.Frame(self, padding=24)
-        frame.pack(fill="both", expand=True)
-
-        ttk.Label(
-            frame,
-            text=f"{role_title} Dashboard",
-            font=("Arial", 16, "bold")
-        ).pack(anchor="w", pady=(0, 8))
-
-        ttk.Label(
-            frame,
-            text="This role dashboard is connected and ready for feature modules."
-        ).pack(anchor="w", pady=(0, 16))
-
-        ttk.Button(frame, text="Logout", command=self.logout).pack(anchor="w")
-        self.current_view = frame
-
-    def _require_roles(self, allowed_roles, feature_name: str) -> bool:
+    def _require_feature_access(self, feature_key: str, feature_name: str) -> bool:
         role = AuthController.get_current_role()
-        if role in allowed_roles:
+        if AuthController.can_access_feature(feature_key, role):
             return True
-        messagebox.showerror("Access Denied", f"{feature_name} is not available for your role.")
-        self.route_dashboard_by_role(role)
+
+        self._show_access_denied_modal(feature_name)
         return False
+    
+    def _show_access_denied_modal(self, feature_name: str):
+        root = self
+
+        # Get current window position + size (to center modal)
+        root.update_idletasks()
+        x = root.winfo_rootx()
+        y = root.winfo_rooty()
+        w = root.winfo_width()
+        h = root.winfo_height()
+
+        # Modal size
+        width = 620
+        height = 460
+
+        # Final centered position
+        final_x = x + (w // 2) - (width // 2)
+        final_y = y + (h // 2) - (height // 2)
+
+        # Start slightly lower (for slide-up animation)
+        start_y = final_y + 18
+
+        # Create popup window
+        modal = tk.Toplevel(root)
+
+        # Remove system title bar
+        modal.overrideredirect(True)
+
+        # Background used for shadow effect
+        modal.configure(bg="#000000")
+
+        # Start at lower position
+        modal.geometry(f"{width}x{height}+{final_x}+{start_y}")
+
+        # Start fully transparent (for fade-in)
+        try:
+            modal.attributes("-alpha", 0.0)
+        except Exception:
+            pass
+
+        # Called after animation finishes (on close)
+        def finish_and_refresh():
+            try:
+                modal.destroy()
+            except Exception:
+                pass
+
+            # Refresh dashboard AFTER closing modal
+            self.route_dashboard_by_role()
+
+        # Fade OUT animation (when closing)
+        def fade_out(alpha=1.0, current_y=None):
+            if current_y is None:
+                current_y = modal.winfo_y()
+
+            # decrease opacity
+            alpha -= 0.10
+
+            # move slightly down
+            current_y += 2
+
+            # if fully invisible → destroy
+            if alpha <= 0:
+                finish_and_refresh()
+                return
+
+            try:
+                modal.attributes("-alpha", alpha)
+            except Exception:
+                pass
+
+            # update position
+            modal.geometry(f"{width}x{height}+{final_x}+{current_y}")
+
+            # loop animation
+            modal.after(16, lambda: fade_out(alpha, current_y))
+
+        # Button handler
+        def close_modal():
+            fade_out()
+
+        # Outer shadow frame
+        shadow = ctk.CTkFrame(
+            modal,
+            fg_color="#000000",
+            corner_radius=28
+        )
+        shadow.pack(fill="both", expand=True)
+
+        # Main card (actual popup)
+        card = ctk.CTkFrame(
+            shadow,
+            fg_color="#F7F7FA",
+            corner_radius=28,
+        )
+        card.place(relx=0.5, rely=0.5, anchor="center",
+                relwidth=0.965, relheight=0.965)
+
+        # top spacing
+        ctk.CTkFrame(card, fg_color="transparent", height=20).pack()
+
+        # Icon container (circle)
+        icon_circle = ctk.CTkFrame(
+            card,
+            width=110,
+            height=110,
+            corner_radius=55,
+            fg_color="#F6EEF3",
+        )
+        icon_circle.pack(pady=(10, 10))
+        icon_circle.pack_propagate(False)
+
+        # Try loading custom image icon
+        try:
+            from PIL import Image, ImageTk
+            icon_path = os.path.join("images", "icons", "access_denied.png")
+
+            if os.path.exists(icon_path):
+                img = Image.open(icon_path).convert("RGBA").resize((50, 50))
+                icon_img = ImageTk.PhotoImage(img)
+
+                label = tk.Label(
+                    icon_circle,
+                    image=icon_img,
+                    bg="#F6EEF3",
+                    bd=0,
+                    highlightthickness=0
+                )
+                label.image = icon_img  # keep reference
+                label.pack(expand=True)
+            else:
+                raise FileNotFoundError
+
+        # Fallback icon if image fails
+        except Exception:
+            tk.Label(
+                icon_circle,
+                text="🔒",
+                bg="#F6EEF3",
+                fg="#E94B93",
+                font=("Arial", 26),
+                bd=0,
+            ).pack(expand=True)
+
+        # Title text
+        ctk.CTkLabel(
+            card,
+            text=f"{feature_name} is not\navailable for your role.",
+            text_color="#24314F",
+            font=("Arial", 22, "bold"),
+            justify="center",
+        ).pack(pady=(20, 10))
+
+        # Subtitle text
+        ctk.CTkLabel(
+            card,
+            text="You don't have permission to access this section.\n"
+                "Please contact your administrator for more information.",
+            text_color="#6E7893",
+            font=("Arial", 13),
+            justify="center",
+        ).pack(pady=(0, 20))
+
+        # OK Button
+        ctk.CTkButton(
+            card,
+            text="OK",
+            command=close_modal,
+            fg_color="#F34F98",
+            hover_color="#E2448B",
+            text_color="#FFFFFF",
+            corner_radius=22,
+            font=("Arial", 18, "bold"),
+            height=50,
+            width=260,
+        ).pack(pady=(10, 20))
+
+        # Close with ESC
+        modal.bind("<Escape>", lambda e: close_modal())
+
+        # bring to front
+        modal.lift()
+        modal.focus_force()
+
+        # Fade IN animation
+        def fade_in(alpha=0.0, current_y=None):
+            if current_y is None:
+                current_y = start_y
+
+            alpha += 0.10
+            next_y = current_y - 2
+
+            # clamp values
+            if alpha >= 1.0:
+                alpha = 1.0
+                next_y = final_y
+
+            try:
+                modal.attributes("-alpha", alpha)
+            except Exception:
+                pass
+
+            modal.geometry(f"{width}x{height}+{final_x}+{next_y}")
+
+            # continue animation
+            if alpha < 1.0:
+                modal.after(16, lambda: fade_in(alpha, next_y))
+
+        # start animation
+        fade_in()
 
     def show_user_management(self):
-        if not self._require_roles({"admin"}, "User Management"):
+        if not self._require_feature_access("user_management", "User Management"):
             return
         self.clear_view()
         self.current_view = UserManagementView(self, self.show_dashboard)
 
     def show_tenant_management(self):
-        if not self._require_roles({"admin", "manager", "front_desk"}, "Tenant Management"):
+        if not self._require_feature_access("tenant_management", "Tenant Management"):
             return
         self.clear_view()
         self.current_view = TenantView(self, self.show_dashboard)
 
 
     def show_apartment_management(self):
-        if not self._require_roles({"admin", "manager", "front_desk"}, "Apartment Management"):
+        if not self._require_feature_access("apartment_management", "Apartment Management"):
             return
         self.clear_view()
         self.current_view = ApartmentView(self, self.show_dashboard)
 
 
     def show_lease_management(self):
-        if not self._require_roles({"admin", "manager", "front_desk"}, "Lease Management"):
+        if not self._require_feature_access("lease_management", "Lease Management"):
             return
         self.clear_view()
         LeaseDAO.expire_leases()
