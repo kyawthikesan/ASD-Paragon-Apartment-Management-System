@@ -524,6 +524,6 @@ class LoginView(tk.Frame):
                     f.write(username)
             elif os.path.exists("remember_me.txt"):
                 os.remove("remember_me.txt")
-            self.on_login_success()
+            self.on_login_success(AuthController.get_current_role())
         else:
             messagebox.showerror("Sign In Failed", message)
