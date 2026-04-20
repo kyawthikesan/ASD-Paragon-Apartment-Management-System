@@ -11,10 +11,11 @@ class ApartmentDAO:
         cursor.execute("""
         INSERT INTO apartments (location_id, type, rent, rooms, status)
         VALUES (?, ?, ?, ?, ?)
-        """, (location_id, type, rent, rooms, "Available"))
+        """, (location_id, type, rent, rooms, "AVAILABLE"))
 
         conn.commit()
         conn.close()
+
 
     @staticmethod
     def get_all_apartments():
@@ -27,7 +28,8 @@ class ApartmentDAO:
             l.city,
             a.type,
             a.rent,
-            a.rooms
+            a.rooms,
+            a.status
         FROM apartments a
         JOIN locations l ON a.location_id = l.location_id
         ORDER BY a.apartmentID DESC
@@ -36,6 +38,7 @@ class ApartmentDAO:
 
         conn.close()
         return rows
+
 
     @staticmethod
     def update_apartment(apartmentID, location_id, type, rent, rooms):
@@ -51,6 +54,7 @@ class ApartmentDAO:
         conn.commit()
         conn.close()
 
+
     @staticmethod
     def delete_apartment(apartmentID):
         conn = DBManager.get_connection()
@@ -60,6 +64,7 @@ class ApartmentDAO:
 
         conn.commit()
         conn.close()
+
 
     @staticmethod
     def search_apartment(keyword):
@@ -72,12 +77,18 @@ class ApartmentDAO:
             l.city,
             a.type,
             a.rent,
-            a.rooms
+            a.rooms,
+            a.status
         FROM apartments a
         JOIN locations l ON a.location_id = l.location_id
         WHERE a.type LIKE ?
         ORDER BY a.apartmentID DESC
         """, (f"%{keyword}%",))
+
+        rows = cursor.fetchall()
+        conn.close()
+        return rows
+
 
     @staticmethod
     def get_available_apartments():
@@ -91,7 +102,7 @@ class ApartmentDAO:
             a.type
         FROM apartments a
         JOIN locations l ON a.location_id = l.location_id
-        WHERE a.status = 'Available'
+        WHERE a.status = 'AVAILABLE'
         """)
 
         rows = cursor.fetchall()

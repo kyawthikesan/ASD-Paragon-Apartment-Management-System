@@ -17,6 +17,13 @@ class LeaseDAO:
         VALUES (?, ?, ?, ?, 'Active')
         """, (tenantID, apartmentID, start_date, end_date))
 
+        # Mark apartment as OCCUPIED
+        cursor.execute("""
+        UPDATE apartments
+        SET status = 'OCCUPIED'
+        WHERE apartmentID = ?
+        """, (apartmentID,))
+
         conn.commit()
         conn.close()
 
@@ -51,7 +58,7 @@ class LeaseDAO:
 
 
     # =========================
-    # CHECK ACTIVE LEASE (FIXED - DATE BASED)
+    # CHECK ACTIVE LEASE
     # =========================
     @staticmethod
     def has_active_lease(tenantID):
@@ -87,7 +94,7 @@ class LeaseDAO:
         result = cursor.fetchone()
         conn.close()
 
-        return result and result["status"] == "Available"
+        return result and result[0] == "AVAILABLE"
 
 
     # =========================
@@ -100,7 +107,7 @@ class LeaseDAO:
 
         cursor.execute("""
         UPDATE apartments
-        SET status = 'Occupied'
+        SET status = 'OCCUPIED'
         WHERE apartmentID = ?
         """, (apartmentID,))
 
@@ -109,14 +116,13 @@ class LeaseDAO:
 
 
     # =========================
-    # AUTO EXPIRE OLD LEASES (IMPORTANT FIX)
+    # AUTO EXPIRE OLD LEASES
     # =========================
     @staticmethod
     def expire_leases():
         conn = DBManager.get_connection()
         cursor = conn.cursor()
 
-        #expire lease
         cursor.execute("""
         UPDATE leases
         SET status = 'Ended'
@@ -124,15 +130,64 @@ class LeaseDAO:
         AND status = 'Active'
         """)
 
-        #free apartments
         cursor.execute("""
         UPDATE apartments
-        SET status = 'Available'
+        SET status = 'AVAILABLE'
         WHERE apartmentID IN (
             SELECT apartmentID FROM leases
             WHERE DATE(end_date) < DATE('now')
+            AND status = 'Ended'
         )
         """)
 
         conn.commit()
         conn.close()
+
+    # =========================
+    # TERMINEATE LEASES
+    # =========================
+
+    @staticmethod
+    def terminate_lease(lease_id):
+        conn = DBManager.get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+        SELECT l.apartmentID, l.end_date, a.rent
+        FROM leases l
+        JOIN apartments a ON l.apartmentID = a.apartmentID
+        WHERE l.leaseID = ?
+        """, (lease_id,))
+        
+        result = cursor.fetchone()
+
+        if not result:
+            conn.close()
+            return 0
+
+        apartmentID, end_date, rent = result
+
+        today = date.today()
+        end = date.fromisoformat(end_date)
+
+        penalty = 0
+
+        if today < end:
+            penalty = rent * 0.05
+
+        cursor.execute("""
+        UPDATE leases
+        SET status = 'Ended'
+        WHERE leaseID = ?
+        """, (lease_id,))
+
+        cursor.execute("""
+        UPDATE apartments
+        SET status = 'AVAILABLE'
+        WHERE apartmentID = ?
+        """, (apartmentID,))
+
+        conn.commit()
+        conn.close()
+
+        return penalty

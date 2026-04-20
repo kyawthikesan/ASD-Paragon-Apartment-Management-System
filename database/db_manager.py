@@ -62,7 +62,7 @@ class DBManager:
             type TEXT,
             rent REAL,
             rooms INTEGER,
-            status TEXT DEFAULT 'Available',
+            status TEXT CHECK(status IN ('AVAILABLE','OCCUPIED')) DEFAULT 'AVAILABLE',
 
             FOREIGN KEY (location_id) REFERENCES locations(location_id)
         );

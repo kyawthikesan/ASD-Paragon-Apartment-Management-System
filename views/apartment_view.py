@@ -71,13 +71,13 @@ class ApartmentView(tk.Frame):
         container = ttk.Frame(table_frame)
         container.pack(fill="both", expand=True)
 
-        columns = ("ID", "Location", "Type", "Rent", "Rooms")
+        columns = ("ID", "Location", "Type", "Rent", "Rooms", "Status")
 
         self.table = ttk.Treeview(container, columns=columns, show="headings")
 
         for col in columns:
             self.table.heading(col, text=col)
-            self.table.column(col, width=120)
+            self.table.column(col, width=120, anchor="center")
 
         self.table.pack(side="left", fill="both", expand=True)
 
@@ -101,7 +101,8 @@ class ApartmentView(tk.Frame):
                 apt["city"],
                 apt["type"],
                 apt["rent"],
-                apt["rooms"]
+                apt["rooms"],
+                apt["status"]
             ))
 
     def fill_fields(self, event):
@@ -196,7 +197,8 @@ class ApartmentView(tk.Frame):
                 apt["city"],  
                 apt["type"],
                 apt["rent"],
-                apt["rooms"]
+                apt["rooms"],
+                apt["status"]
             ))
 
     def load_locations(self):
