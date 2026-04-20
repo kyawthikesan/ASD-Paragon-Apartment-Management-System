@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox
 from database.db_manager import DBManager
 from dao.user_dao import UserDAO
 from views.login_view import LoginView
@@ -127,21 +127,37 @@ class PAMSApp(tk.Tk):
         ttk.Button(frame, text="Logout", command=self.logout).pack(anchor="w")
         self.current_view = frame
 
+    def _require_roles(self, allowed_roles, feature_name: str) -> bool:
+        role = AuthController.get_current_role()
+        if role in allowed_roles:
+            return True
+        messagebox.showerror("Access Denied", f"{feature_name} is not available for your role.")
+        self.route_dashboard_by_role(role)
+        return False
+
     def show_user_management(self):
+        if not self._require_roles({"admin"}, "User Management"):
+            return
         self.clear_view()
         self.current_view = UserManagementView(self, self.show_dashboard)
 
     def show_tenant_management(self):
+        if not self._require_roles({"admin", "manager", "front_desk"}, "Tenant Management"):
+            return
         self.clear_view()
         self.current_view = TenantView(self, self.show_dashboard)
 
 
     def show_apartment_management(self):
+        if not self._require_roles({"admin", "manager", "front_desk"}, "Apartment Management"):
+            return
         self.clear_view()
         self.current_view = ApartmentView(self, self.show_dashboard)
 
 
     def show_lease_management(self):
+        if not self._require_roles({"admin", "manager", "front_desk"}, "Lease Management"):
+            return
         self.clear_view()
         LeaseDAO.expire_leases()
         self.current_view = LeaseView(self, self.show_dashboard)
