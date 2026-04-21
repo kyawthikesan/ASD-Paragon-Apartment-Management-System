@@ -10,6 +10,8 @@ try:
     from PIL import Image, ImageTk
     PIL_AVAILABLE = True
 except ImportError:
+    Image = None
+    ImageTk = None
     PIL_AVAILABLE = False
 
 
@@ -86,24 +88,28 @@ class PremiumAppShell(ctk.CTkFrame):
             return fallback
 
     def _build_layout(self, page_title, on_logout, active_nav, nav_sections, footer_action_label):
+        # Main shell container
         frame = ctk.CTkFrame(self, fg_color=self.BODY_BG, corner_radius=0)
         frame.pack(fill="both", expand=True)
-        frame.grid_columnconfigure(1, weight=1)
+
+        # Sidebar column fixed, body column expandable
         frame.grid_rowconfigure(0, weight=1)
+        frame.grid_columnconfigure(0, weight=0)
+        frame.grid_columnconfigure(1, weight=1)
 
         sidebar = ctk.CTkFrame(
             frame,
             fg_color=self.SIDEBAR_BG,
             corner_radius=0,
-            width=220,
+            width=230,
         )
-        sidebar.grid(row=0, column=0, sticky="ns")
+        sidebar.grid(row=0, column=0, sticky="nsew")
         sidebar.grid_propagate(False)
 
         body = ctk.CTkFrame(frame, fg_color=self.BODY_BG, corner_radius=0)
         body.grid(row=0, column=1, sticky="nsew")
-        body.grid_columnconfigure(0, weight=1)
         body.grid_rowconfigure(1, weight=1)
+        body.grid_columnconfigure(0, weight=1)
 
         self._build_sidebar(sidebar, on_logout, active_nav, nav_sections, footer_action_label)
         self._build_topbar(body, page_title)
@@ -113,17 +119,30 @@ class PremiumAppShell(ctk.CTkFrame):
         self.content.grid_columnconfigure(0, weight=1)
 
     def _build_sidebar(self, sidebar, on_logout, active_nav, nav_sections, footer_action_label):
-        top = ctk.CTkFrame(sidebar, fg_color=self.SIDEBAR_BG, corner_radius=0)
-        top.pack(fill="x", padx=18, pady=(24, 12))
+        # Sidebar grid structure:
+        # 0 = brand
+        # 1 = location
+        # 2 = nav area
+        # 3 = footer
+        sidebar.grid_rowconfigure(0, weight=0)
+        sidebar.grid_rowconfigure(1, weight=0)
+        sidebar.grid_rowconfigure(2, weight=1)
+        sidebar.grid_rowconfigure(3, weight=0)
+        sidebar.grid_columnconfigure(0, weight=1)
 
+        # ---------------- Brand ----------------
+        top = ctk.CTkFrame(sidebar, fg_color=self.SIDEBAR_BG, corner_radius=0)
+        top.grid(row=0, column=0, sticky="ew", padx=18, pady=(24, 12))
         self._render_brand(top)
 
+        # ---------------- Location ----------------
         location_box = ctk.CTkFrame(sidebar, fg_color=self.SIDEBAR_BG, corner_radius=0)
-        location_box.pack(fill="x", padx=18, pady=(8, 18))
+        location_box.grid(row=1, column=0, sticky="ew", padx=18, pady=(8, 18))
         self._render_location_row(location_box)
 
+        # ---------------- Navigation ----------------
         nav_wrap = ctk.CTkFrame(sidebar, fg_color=self.SIDEBAR_BG, corner_radius=0)
-        nav_wrap.pack(fill="both", expand=True, padx=10, pady=(4, 0))
+        nav_wrap.grid(row=2, column=0, sticky="nsew", padx=10, pady=(4, 0))
 
         for section in nav_sections:
             title = section.get("title", "").upper()
@@ -198,8 +217,9 @@ class PremiumAppShell(ctk.CTkFrame):
                         font=("Arial", 10, "bold"),
                     ).pack(side="right", padx=(0, 12), pady=10)
 
+        # ---------------- Footer ----------------
         footer = ctk.CTkFrame(sidebar, fg_color=self.SIDEBAR_BG, corner_radius=0)
-        footer.pack(side="bottom", fill="x", padx=14, pady=(0, 10))
+        footer.grid(row=3, column=0, sticky="ew", padx=14, pady=(8, 10))
 
         ctk.CTkFrame(
             footer,
@@ -235,7 +255,7 @@ class PremiumAppShell(ctk.CTkFrame):
             anchor="w",
             justify="left",
             height=20,
-        ).pack(fill="x", pady=(0, 0))
+        ).pack(fill="x")
 
         ctk.CTkLabel(
             text_col,
@@ -245,7 +265,7 @@ class PremiumAppShell(ctk.CTkFrame):
             anchor="w",
             justify="left",
             height=18,
-        ).pack(fill="x", pady=(0, 0))
+        ).pack(fill="x")
 
         ctk.CTkFrame(
             footer,
@@ -286,7 +306,7 @@ class PremiumAppShell(ctk.CTkFrame):
 
     def _build_topbar(self, body, page_title):
         topbar = ctk.CTkFrame(body, fg_color=self.BODY_BG, corner_radius=0, height=92)
-        topbar.grid(row=0, column=0, sticky="ew")
+        topbar.grid(row=0, column=0, sticky="ew", padx=0, pady=(14, 0))
         topbar.grid_columnconfigure(0, weight=1)
         topbar.grid_columnconfigure(1, weight=1)
         topbar.grid_propagate(False)
@@ -516,14 +536,17 @@ class PremiumAppShell(ctk.CTkFrame):
                 try:
                     image = Image.open(path).convert("RGBA")
                     image = self._trim_logo_image(image)
-                    image = image.resize(size, Image.LANCZOS)
 
                     if tint_rgb:
                         image = self._tint_icon(image, tint_rgb)
 
-                    photo = ImageTk.PhotoImage(image)
-                    self._icon_cache[cache_key] = photo
-                    return photo
+                    ctk_image = ctk.CTkImage(
+                        light_image=image,
+                        dark_image=image,
+                        size=size
+                    )
+                    self._icon_cache[cache_key] = ctk_image
+                    return ctk_image
                 except Exception:
                     return None
 
@@ -599,41 +622,52 @@ class PremiumAppShell(ctk.CTkFrame):
         button_text: str = "OK",
         on_close=None,
         highlight_nonzero=False,
-        icon_image_name=None, 
-        icon_image_size=(34, 34),
+        icon_image_name=None,
+        icon_image_size=(28, 28),
     ):
+
+        # Reusable premium modal for Alerts / Account Settings / other info popups.
+
         root = self.winfo_toplevel()
 
+        # ---------------------------------------------------------
+        # Get current root window position and size
+        # so the modal can appear centered on top of it
+        # ---------------------------------------------------------
         root.update_idletasks()
         x = root.winfo_rootx()
         y = root.winfo_rooty()
         w = root.winfo_width()
         h = root.winfo_height()
 
-        width = 640
-        height = max(360, min(500, 210 + len(rows) * 68))
+        width = 620
+        height = 460
 
-        screen_w = root.winfo_screenwidth()
-        screen_h = root.winfo_screenheight()
-
+        # Final centered position of the popup
         final_x = x + (w // 2) - (width // 2)
         final_y = y + (h // 2) - (height // 2)
 
-        final_x = max(20, min(final_x, screen_w - width - 20))
-        final_y = max(20, min(final_y, screen_h - height - 60))
-
+        # Start slightly lower for a smooth slide-up animation
         start_y = final_y + 18
 
+        # ---------------------------------------------------------
+        # Create the popup window
+        # overrideredirect(True) removes the OS title bar
+        # ---------------------------------------------------------
         modal = tk.Toplevel(root)
         modal.overrideredirect(True)
         modal.configure(bg="#000000")
         modal.geometry(f"{width}x{height}+{final_x}+{start_y}")
 
+        # Start transparent for fade-in animation
         try:
             modal.attributes("-alpha", 0.0)
         except Exception:
             pass
 
+        # ---------------------------------------------------------
+        # Final cleanup when modal closes
+        # ---------------------------------------------------------
         def finish_close():
             try:
                 modal.grab_release()
@@ -651,6 +685,9 @@ class PremiumAppShell(ctk.CTkFrame):
                 except Exception:
                     pass
 
+        # ---------------------------------------------------------
+        # Fade out + slide down animation
+        # ---------------------------------------------------------
         def fade_out(alpha=1.0, current_y=None):
             if current_y is None:
                 current_y = modal.winfo_y()
@@ -670,22 +707,27 @@ class PremiumAppShell(ctk.CTkFrame):
             modal.geometry(f"{width}x{height}+{final_x}+{current_y}")
             modal.after(16, lambda: fade_out(alpha, current_y))
 
+        # Button / ESC close handler
         def close_modal():
             fade_out()
 
+        # ---------------------------------------------------------
+        # Outer dark shadow layer
+        # ---------------------------------------------------------
         shadow = ctk.CTkFrame(
             modal,
-            fg_color="#1B1712",
-            corner_radius=30
+            fg_color="#000000",
+            corner_radius=28
         )
         shadow.pack(fill="both", expand=True)
 
+        # ---------------------------------------------------------
+        # Main popup card
+        # ---------------------------------------------------------
         card = ctk.CTkFrame(
             shadow,
-            fg_color="#F8F5EF",
+            fg_color="#F7F7FA",
             corner_radius=28,
-            border_width=1,
-            border_color="#D7C3A0"
         )
         card.place(
             relx=0.5,
@@ -695,18 +737,21 @@ class PremiumAppShell(ctk.CTkFrame):
             relheight=0.965
         )
 
+        # Small top spacer
         ctk.CTkFrame(card, fg_color="transparent", height=10).pack()
 
+        # Icon circle
         icon_circle = ctk.CTkFrame(
             card,
-            width=72,
-            height=72,
-            corner_radius=36,
+            width=84,
+            height=84,
+            corner_radius=42,
             fg_color=icon_bg
         )
         icon_circle.pack(pady=(8, 6))
         icon_circle.pack_propagate(False)
 
+        # Try to add custom image icon first
         icon_widget_added = False
         if icon_image_name:
             icon_image = self._load_local_modal_icon(icon_image_name, size=icon_image_size)
@@ -722,34 +767,38 @@ class PremiumAppShell(ctk.CTkFrame):
                 icon_label.pack(expand=True)
                 icon_widget_added = True
 
+        # Fallback to text icon if image icon is not available
         if not icon_widget_added:
             tk.Label(
                 icon_circle,
                 text=icon_text,
                 bg=icon_bg,
                 fg=icon_fg,
-                font=("Arial", 26),
+                font=("Arial", 22),
                 bd=0,
                 highlightthickness=0
             ).pack(expand=True)
 
+        # ---------------------------------------------------------
+        # Modal title
+        # Slightly smaller so it fits better with row content
+        # ---------------------------------------------------------
         ctk.CTkLabel(
             card,
             text=title,
             text_color="#2E2418",
-            font=("Georgia", 25, "bold")
-        ).pack(pady=(2, 10))
+            font=("Arial", 20, "bold"),
+            justify="center"
+        ).pack(pady=(10, 8))
 
-        ctk.CTkFrame(
-            card,
-            fg_color="#D8C5A1",
-            height=3,
-            corner_radius=2
-        ).pack(fill="x", padx=72, pady=(0, 16))
-
+        # ---------------------------------------------------------
+        # Content area for rows
+        # Tighter padding so bottom content stays visible
+        # ---------------------------------------------------------
         content_wrap = ctk.CTkFrame(card, fg_color="transparent")
-        content_wrap.pack(fill="both", expand=True, padx=70, pady=(0, 6))
+        content_wrap.pack(fill="both", expand=True, padx=55, pady=(0, 6))
 
+        # Build each info row
         for label_text, value_text in rows:
             row_card = ctk.CTkFrame(
                 content_wrap,
@@ -757,18 +806,22 @@ class PremiumAppShell(ctk.CTkFrame):
                 corner_radius=18,
                 border_width=1,
                 border_color="#E1D6C5",
-                height=50
+                height=42
             )
-            row_card.pack(fill="x", pady=6)
+            row_card.pack(fill="x", pady=5)
             row_card.pack_propagate(False)
 
             inner = ctk.CTkFrame(row_card, fg_color="transparent")
-            inner.pack(fill="both", expand=True, padx=18, pady=7)
+            inner.pack(fill="both", expand=True, padx=16, pady=4)
 
+            # Make left side expand, right side stay compact
             inner.grid_columnconfigure(0, weight=1)
             inner.grid_columnconfigure(1, weight=0)
 
+            # Default value color
             value_color = "#6D5C43"
+
+            # Optional: highlight numeric values above zero in red
             if highlight_nonzero:
                 try:
                     if float(value_text) > 0:
@@ -776,45 +829,52 @@ class PremiumAppShell(ctk.CTkFrame):
                 except Exception:
                     pass
 
+            # Left label
             ctk.CTkLabel(
                 inner,
                 text=label_text,
                 text_color="#8A7758",
-                font=("Arial", 13, "bold"),
+                font=("Arial", 11, "bold"),
                 anchor="w"
             ).grid(row=0, column=0, sticky="w")
 
+            # Right value
             ctk.CTkLabel(
                 inner,
                 text=str(value_text),
                 text_color=value_color,
-                font=("Arial", 18, "bold"),
+                font=("Arial", 15, "bold"),
                 anchor="e"
             ).grid(row=0, column=1, sticky="e")
 
-        button_wrap = ctk.CTkFrame(card, fg_color="transparent", height=68)
-        button_wrap.pack(fill="x", padx=40, pady=(10, 18))
-        button_wrap.pack_propagate(False)
-
+        # ---------------------------------------------------------
+        # OK button
+        # SAME size as the access denied popup button
+        # ---------------------------------------------------------
         ctk.CTkButton(
-            button_wrap,
+            card,
             text=button_text,
             command=close_modal,
             fg_color="#CDAA45",
             hover_color="#B89232",
             text_color="#2A2115",
             corner_radius=22,
-            font=("Arial", 16, "bold"),
-            height=44,
-            width=240
-        ).pack(expand=True)
+            font=("Arial", 18, "bold"),
+            height=50,
+            width=260
+        ).pack(pady=(6, 14))
 
+        # ESC key also closes the popup
         modal.bind("<Escape>", lambda e: close_modal())
 
+        # Bring modal to front and lock focus to it
         modal.lift()
         modal.focus_force()
         modal.grab_set()
 
+        # ---------------------------------------------------------
+        # Fade in + slide up animation
+        # ---------------------------------------------------------
         def fade_in(alpha=0.0, current_y=None):
             if current_y is None:
                 current_y = start_y
@@ -836,6 +896,7 @@ class PremiumAppShell(ctk.CTkFrame):
             if alpha < 1.0:
                 modal.after(16, lambda: fade_in(alpha, next_y))
 
+        # Start animation
         fade_in()
 
     @staticmethod
@@ -876,7 +937,6 @@ class PremiumAppShell(ctk.CTkFrame):
     def _handle_bell_click(self):
         if callable(self._on_bell_click):
             self._on_bell_click()
-
     def _handle_settings_click(self):
         if callable(self._on_settings_click):
             self._on_settings_click()
