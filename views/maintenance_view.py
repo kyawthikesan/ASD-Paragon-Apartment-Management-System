@@ -1,42 +1,52 @@
-from tkinter import ttk
+import tkinter as tk
+from tkinter import ttk, messagebox
+from maintenance_dao import MaintenanceDAO
+from scheduleview import ScheduleView
 
+class MaintenanceView:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("UWE Maintenance System")
+        self.root.geometry("900x600")
+        self.dao = MaintenanceDAO()
 
-class MaintenanceDashboardView(ttk.Frame):
-    def __init__(self, parent, logout_callback=None, home_callback=None):
-        super().__init__(parent)
-        self.logout_callback = logout_callback
-        self.home_callback = home_callback
+        # Header
+        tk.Label(root, text="Maintenance Dashboard", font=("Arial", 20), bg="#2c3e50", fg="white", pady=15).pack(fill=tk.X)
 
-        self.pack(fill="both", expand=True)
+        # Treeview Table
+        self.tree = ttk.Treeview(root, columns=("ID", "CompID", "Staff", "Status", "Cost", "Hours"), show='headings')
+        for col in ("ID", "CompID", "Staff", "Status", "Cost", "Hours"):
+            self.tree.heading(col, text=col)
+            self.tree.column(col, width=100, anchor=tk.CENTER)
+        self.tree.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
 
-        top_bar = ttk.Frame(self, padding=12)
-        top_bar.pack(fill="x")
+        # Control Panel
+        btn_frame = tk.Frame(root)
+        btn_frame.pack(pady=20)
+        ttk.Button(btn_frame, text="🔄 Refresh", command=self.load_data).grid(row=0, column=0, padx=5)
+        ttk.Button(btn_frame, text="📅 Schedule/Update", command=self.open_scheduler).grid(row=0, column=1, padx=5)
+        ttk.Button(btn_frame, text="📊 Cost Report", command=self.show_report).grid(row=0, column=2, padx=5)
 
-        ttk.Label(
-            top_bar,
-            text="Maintenance Dashboard",
-            font=("Arial", 16, "bold")
-        ).pack(side="left")
+        self.load_data()
 
-        if self.home_callback:
-            ttk.Button(
-                top_bar,
-                text="← Home",
-                command=self.home_callback
-            ).pack(side="right", padx=6)
+    def load_data(self):
+        for item in self.tree.get_children(): self.tree.delete(item)
+        for row in self.dao.get_all_requests():
+            self.tree.insert("", tk.END, values=(row[0], row[1], row[2], row[4], f"{row[5]:.2f}", row[6]))
 
-        if self.logout_callback:
-            ttk.Button(
-                top_bar,
-                text="Logout",
-                command=self.logout_callback
-            ).pack(side="right", padx=6)
+    def open_scheduler(self):
+        sel = self.tree.selection()
+        if not sel: return messagebox.showwarning("Error", "Select a record")
+        val = self.tree.item(sel)['values']
+        ScheduleView(self.root, self.dao, val[0], val, self.load_data)
 
-        body = ttk.Frame(self, padding=20)
-        body.pack(fill="both", expand=True)
+    def show_report(self):
+        # Satisfies "Generate maintenance cost reports" requirement 
+        total, hours, count = self.dao.get_cost_report_data()
+        report = f"Resolved Tasks: {count}\nTotal Cost: £{total if total else 0:.2f}\nTotal Labor: {hours if hours else 0} hrs"
+        messagebox.showinfo("Maintenance Cost Report", report)
 
-        ttk.Label(
-            body,
-            text="Maintenance Dashboard",
-            font=("Arial", 16, "bold")
-        ).pack(pady=20)
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = MaintenanceView(root)
+    root.mainloop()
