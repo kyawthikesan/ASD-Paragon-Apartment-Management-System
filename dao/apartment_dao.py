@@ -17,21 +17,26 @@ class ApartmentDAO:
         conn.close()
 
     @staticmethod
-    def get_all_apartments():
+    def get_all_apartments(city=None):
         conn = DBManager.get_connection()
         cursor = conn.cursor()
-
-        cursor.execute("""
+        query = """
         SELECT 
             a.apartmentID,
             l.city,
             a.type,
             a.rent,
-            a.rooms
+            a.rooms,
+            a.status
         FROM apartments a
         JOIN locations l ON a.location_id = l.location_id
-        ORDER BY a.apartmentID DESC
-        """)
+        """
+        params = []
+        if city:
+            query += " WHERE l.city = ?"
+            params.append(city)
+        query += " ORDER BY a.apartmentID DESC"
+        cursor.execute(query, tuple(params))
         rows = cursor.fetchall()
 
         conn.close()
@@ -62,38 +67,55 @@ class ApartmentDAO:
         conn.close()
 
     @staticmethod
-    def search_apartment(keyword):
+    def search_apartment(keyword, city=None):
         conn = DBManager.get_connection()
         cursor = conn.cursor()
-
-        cursor.execute("""
+        query = """
         SELECT 
             a.apartmentID,
             l.city,
             a.type,
             a.rent,
-            a.rooms
+            a.rooms,
+            a.status
         FROM apartments a
         JOIN locations l ON a.location_id = l.location_id
         WHERE a.type LIKE ?
-        ORDER BY a.apartmentID DESC
-        """, (f"%{keyword}%",))
+        """
+        params = [f"%{keyword}%"]
+        if city:
+            query += " AND l.city = ?"
+            params.append(city)
+        query += " ORDER BY a.apartmentID DESC"
+        cursor.execute(query, tuple(params))
+        rows = cursor.fetchall()
+        conn.close()
+        return rows
 
     @staticmethod
-    def get_available_apartments():
+    def get_available_apartments(city=None):
         conn = DBManager.get_connection()
         cursor = conn.cursor()
-
-        cursor.execute("""
+        query = """
         SELECT 
             a.apartmentID,
             l.city,
             a.type
         FROM apartments a
         JOIN locations l ON a.location_id = l.location_id
-        WHERE a.status = 'Available'
-        """)
+        WHERE UPPER(a.status) = 'AVAILABLE'
+        """
+        params = []
+        if city:
+            query += " AND l.city = ?"
+            params.append(city)
+        cursor.execute(query, tuple(params))
 
         rows = cursor.fetchall()
         conn.close()
         return rows
+
+
+# Backward-compatible function alias for older imports in tests/modules.
+def add_apartment(location_id, apartment_type, rent, rooms):
+    ApartmentDAO.add_apartment(location_id, apartment_type, rent, rooms)

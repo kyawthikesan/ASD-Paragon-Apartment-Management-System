@@ -8,8 +8,8 @@ class ApartmentController:
         ApartmentDAO.add_apartment(locationID, type, rent, rooms)
 
     @staticmethod
-    def get_all_apartments():
-        return ApartmentDAO.get_all_apartments()
+    def get_all_apartments(city=None):
+        return ApartmentDAO.get_all_apartments(city=city)
 
     @staticmethod
     def update_apartment(apartmentID, locationID, type, rent, rooms):
@@ -20,5 +20,5 @@ class ApartmentController:
         ApartmentDAO.delete_apartment(apartmentID)
 
     @staticmethod
-    def search_apartment(keyword):
-        return ApartmentDAO.search_apartment(keyword)
+    def search_apartment(keyword, city=None):
+        return ApartmentDAO.search_apartment(keyword, city=city)

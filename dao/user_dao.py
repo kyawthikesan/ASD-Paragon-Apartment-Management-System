@@ -5,6 +5,52 @@ from utils.security import hash_password
 
 
 class UserDAO:
+    PERMISSION_KEYS = [
+        "register_tenants",
+        "manage_payments",
+        "log_maintenance",
+        "generate_reports",
+        "manage_user_accounts",
+    ]
+
+    DEFAULT_ROLE_PERMISSIONS = {
+        "admin": {
+            "register_tenants": 1,
+            "manage_payments": 1,
+            "log_maintenance": 1,
+            "generate_reports": 1,
+            "manage_user_accounts": 1,
+        },
+        "finance": {
+            "register_tenants": 0,
+            "manage_payments": 1,
+            "log_maintenance": 0,
+            "generate_reports": 1,
+            "manage_user_accounts": 0,
+        },
+        "front_desk": {
+            "register_tenants": 1,
+            "manage_payments": 0,
+            "log_maintenance": 1,
+            "generate_reports": 0,
+            "manage_user_accounts": 0,
+        },
+        "maintenance": {
+            "register_tenants": 0,
+            "manage_payments": 0,
+            "log_maintenance": 1,
+            "generate_reports": 0,
+            "manage_user_accounts": 0,
+        },
+        "manager": {
+            "register_tenants": 1,
+            "manage_payments": 1,
+            "log_maintenance": 1,
+            "generate_reports": 1,
+            "manage_user_accounts": 1,
+        },
+    }
+
 
     @staticmethod
     def seed_roles() -> None:
@@ -17,6 +63,25 @@ class UserDAO:
                     "INSERT OR IGNORE INTO roles (role_name) VALUES (?)",
                     (role,)
                 )
+            for role_name, permissions in UserDAO.DEFAULT_ROLE_PERMISSIONS.items():
+                role_row = conn.execute(
+                    "SELECT id FROM roles WHERE role_name = ?",
+                    (role_name,)
+                ).fetchone()
+                if role_row is None:
+                    continue
+                for permission_key in UserDAO.PERMISSION_KEYS:
+                    conn.execute(
+                        """
+                        INSERT OR IGNORE INTO role_permissions (role_id, permission_key, allowed)
+                        VALUES (?, ?, ?)
+                        """,
+                        (
+                            role_row["id"],
+                            permission_key,
+                            int(permissions.get(permission_key, 0)),
+                        )
+                    )
             conn.commit()
         finally:
             conn.close()
@@ -164,6 +229,62 @@ class UserDAO:
                     raise ValueError("Username already exists.") from error
                 raise
 
+            conn.commit()
+        finally:
+            conn.close()
+
+    @staticmethod
+    def get_role_permissions() -> dict[str, dict[str, int]]:
+        conn = DBManager.get_connection()
+        try:
+            rows = conn.execute(
+                """
+                SELECT r.role_name, rp.permission_key, rp.allowed
+                FROM roles r
+                LEFT JOIN role_permissions rp ON rp.role_id = r.id
+                """
+            ).fetchall()
+
+            result = {
+                role: {perm: int(UserDAO.DEFAULT_ROLE_PERMISSIONS.get(role, {}).get(perm, 0))
+                       for perm in UserDAO.PERMISSION_KEYS}
+                for role in UserDAO.DEFAULT_ROLE_PERMISSIONS.keys()
+            }
+
+            for row in rows:
+                role_name = str(row["role_name"]).strip().lower()
+                permission_key = row["permission_key"]
+                if role_name not in result:
+                    result[role_name] = {perm: 0 for perm in UserDAO.PERMISSION_KEYS}
+                if permission_key in UserDAO.PERMISSION_KEYS:
+                    result[role_name][permission_key] = int(row["allowed"] or 0)
+            return result
+        finally:
+            conn.close()
+
+    @staticmethod
+    def update_role_permissions(permissions_matrix: dict[str, dict[str, int]]) -> None:
+        conn = DBManager.get_connection()
+        try:
+            for role_name, permissions in permissions_matrix.items():
+                role_row = conn.execute(
+                    "SELECT id FROM roles WHERE role_name = ?",
+                    (role_name,)
+                ).fetchone()
+                if role_row is None:
+                    continue
+
+                for permission_key in UserDAO.PERMISSION_KEYS:
+                    allowed = int(bool(permissions.get(permission_key, 0)))
+                    conn.execute(
+                        """
+                        INSERT INTO role_permissions (role_id, permission_key, allowed)
+                        VALUES (?, ?, ?)
+                        ON CONFLICT(role_id, permission_key)
+                        DO UPDATE SET allowed = excluded.allowed
+                        """,
+                        (role_row["id"], permission_key, allowed)
+                    )
             conn.commit()
         finally:
             conn.close()

@@ -17,15 +17,21 @@ class LeaseDAO:
         VALUES (?, ?, ?, ?, 'Active')
         """, (tenantID, apartmentID, start_date, end_date))
 
+        # Mark apartment as OCCUPIED
+        cursor.execute("""
+        UPDATE apartments
+        SET status = 'OCCUPIED'
+        WHERE apartmentID = ?
+        """, (apartmentID,))
+
         conn.commit()
         conn.close()
-
 
     # =========================
     # GET ALL LEASES (UI LIST)
     # =========================
     @staticmethod
-    def get_all_leases():
+    def get_all_leases(city=None):
         conn = DBManager.get_connection()
         conn.row_factory = lambda cursor, row: {
             "leaseID": row[0],
@@ -36,22 +42,94 @@ class LeaseDAO:
             "status": row[5]
         }
         cursor = conn.cursor()
-
-        cursor.execute("""
+        query = """
         SELECT l.leaseID, t.name, a.type, l.start_date, l.end_date, l.status
         FROM leases l
         JOIN tenants t ON l.tenantID = t.tenantID
         JOIN apartments a ON l.apartmentID = a.apartmentID
-        ORDER BY l.leaseID DESC
-        """)
+        LEFT JOIN locations loc ON a.location_id = loc.location_id
+        """
+        params = []
+        if city:
+            query += " WHERE loc.city = ?"
+            params.append(city)
+        query += " ORDER BY l.leaseID DESC"
+        cursor.execute(query, tuple(params))
 
         rows = cursor.fetchall()
         conn.close()
         return rows
 
+    # =========================
+    # GET ALL LEASES WITH FINANCIAL DETAILS
+    # =========================
+    @staticmethod
+    def get_all_leases_with_financial_details(city=None):
+        conn = DBManager.get_connection()
+        cursor = conn.cursor()
+        query = """
+        SELECT
+            l.leaseID,
+            l.tenantID,
+            t.name AS tenant_name,
+            l.apartmentID,
+            a.type AS apartment_type,
+            a.rent,
+            loc.city,
+            l.start_date,
+            l.end_date,
+            l.status
+        FROM leases l
+        JOIN tenants t ON l.tenantID = t.tenantID
+        JOIN apartments a ON l.apartmentID = a.apartmentID
+        LEFT JOIN locations loc ON a.location_id = loc.location_id
+        """
+        params = []
+        if city:
+            query += " WHERE loc.city = ?"
+            params.append(city)
+        query += " ORDER BY l.leaseID DESC"
+        cursor.execute(query, tuple(params))
+
+        rows = cursor.fetchall()
+        conn.close()
+
+        return [dict(row) for row in rows]
 
     # =========================
-    # CHECK ACTIVE LEASE (FIXED - DATE BASED)
+    # GET ONE LEASE WITH FINANCIAL DETAILS
+    # =========================
+    @staticmethod
+    def get_lease_by_id_with_financial_details(lease_id):
+        conn = DBManager.get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+        SELECT
+            l.leaseID,
+            l.tenantID,
+            t.name AS tenant_name,
+            l.apartmentID,
+            a.type AS apartment_type,
+            a.rent,
+            loc.city,
+            l.start_date,
+            l.end_date,
+            l.status
+        FROM leases l
+        JOIN tenants t ON l.tenantID = t.tenantID
+        JOIN apartments a ON l.apartmentID = a.apartmentID
+        LEFT JOIN locations loc ON a.location_id = loc.location_id
+        WHERE l.leaseID = ?
+        """, (lease_id,))
+
+        row = cursor.fetchone()
+        conn.close()
+
+        return dict(row) if row else None
+
+    # =========================
+    # CHECK ACTIVE LEASE
     # =========================
     @staticmethod
     def has_active_lease(tenantID):
@@ -68,7 +146,6 @@ class LeaseDAO:
         result = cursor.fetchone()
         conn.close()
         return result is not None
-
 
     # =========================
     # CHECK APARTMENT AVAILABILITY
@@ -87,8 +164,7 @@ class LeaseDAO:
         result = cursor.fetchone()
         conn.close()
 
-        return result and result["status"] == "Available"
-
+        return result and result[0] == "AVAILABLE"
 
     # =========================
     # MARK APARTMENT OCCUPIED
@@ -100,23 +176,21 @@ class LeaseDAO:
 
         cursor.execute("""
         UPDATE apartments
-        SET status = 'Occupied'
+        SET status = 'OCCUPIED'
         WHERE apartmentID = ?
         """, (apartmentID,))
 
         conn.commit()
         conn.close()
 
-
     # =========================
-    # AUTO EXPIRE OLD LEASES (IMPORTANT FIX)
+    # AUTO EXPIRE OLD LEASES
     # =========================
     @staticmethod
     def expire_leases():
         conn = DBManager.get_connection()
         cursor = conn.cursor()
 
-        #expire lease
         cursor.execute("""
         UPDATE leases
         SET status = 'Ended'
@@ -124,15 +198,63 @@ class LeaseDAO:
         AND status = 'Active'
         """)
 
-        #free apartments
         cursor.execute("""
         UPDATE apartments
-        SET status = 'Available'
+        SET status = 'AVAILABLE'
         WHERE apartmentID IN (
             SELECT apartmentID FROM leases
             WHERE DATE(end_date) < DATE('now')
+            AND status = 'Ended'
         )
         """)
 
         conn.commit()
         conn.close()
+
+    # =========================
+    # TERMINATE LEASE
+    # =========================
+    @staticmethod
+    def terminate_lease(lease_id):
+        conn = DBManager.get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+        SELECT l.apartmentID, l.end_date, a.rent
+        FROM leases l
+        JOIN apartments a ON l.apartmentID = a.apartmentID
+        WHERE l.leaseID = ?
+        """, (lease_id,))
+
+        result = cursor.fetchone()
+
+        if not result:
+            conn.close()
+            return 0
+
+        apartmentID, end_date, rent = result
+
+        today = date.today()
+        end = date.fromisoformat(end_date)
+
+        penalty = 0
+
+        if today < end:
+            penalty = rent * 0.05
+
+        cursor.execute("""
+        UPDATE leases
+        SET status = 'Ended'
+        WHERE leaseID = ?
+        """, (lease_id,))
+
+        cursor.execute("""
+        UPDATE apartments
+        SET status = 'AVAILABLE'
+        WHERE apartmentID = ?
+        """, (apartmentID,))
+
+        conn.commit()
+        conn.close()
+
+        return penalty
