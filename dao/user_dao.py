@@ -153,10 +153,11 @@ class UserDAO:
                        u.password_hash,
                        u.location,
                        u.is_active,
+                       u.last_login,
                        r.role_name
                 FROM users u
                 JOIN roles r ON u.role_id = r.id
-                WHERE u.username = ?
+                WHERE LOWER(u.username) = LOWER(?)
             """, (username,)).fetchone()
         finally:
             conn.close()
@@ -171,11 +172,24 @@ class UserDAO:
                        u.username,
                        r.role_name,
                        u.location,
-                       u.is_active
+                       u.is_active,
+                       u.last_login
                 FROM users u
                 JOIN roles r ON u.role_id = r.id
                 ORDER BY u.id
             """).fetchall()
+        finally:
+            conn.close()
+
+    @staticmethod
+    def update_last_login(user_id: int) -> None:
+        conn = DBManager.get_connection()
+        try:
+            conn.execute(
+                "UPDATE users SET last_login = ? WHERE id = ?",
+                (datetime.now().isoformat(timespec="seconds"), user_id),
+            )
+            conn.commit()
         finally:
             conn.close()
 

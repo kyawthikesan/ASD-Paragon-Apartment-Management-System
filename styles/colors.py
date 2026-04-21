@@ -1,3 +1,7 @@
+# Student Name: Shune Pyae Pyae (Evelyn) Aung
+# Student ID: 24028257
+# Module: UFCF8S-30-2 Advanced Software Development
+
 BG_MAIN      = "#F5F0E8"
 LEFT_BG      = "#F5F0E8"
 LEFT_BORDER  = "#D4C9B0"

@@ -1,3 +1,7 @@
+# Student Name: Shune Pyae Pyae (Evelyn) Aung
+# Student ID: 24028257
+# Module: UFCF8S-30-2 Advanced Software Development
+
 import os
 from datetime import datetime
 import tkinter as tk
@@ -650,8 +654,8 @@ class PremiumAppShell(ctk.CTkFrame):
         w = root.winfo_width()
         h = root.winfo_height()
 
-        width = 620
-        height = 460
+        width = 500
+        height = min(380, 220 + (len(rows) * 52))
 
         # Final centered position of the popup
         final_x = x + (w // 2) - (width // 2)
@@ -666,7 +670,7 @@ class PremiumAppShell(ctk.CTkFrame):
         # ---------------------------------------------------------
         modal = tk.Toplevel(root)
         modal.overrideredirect(True)
-        modal.configure(bg="#000000")
+        modal.configure(bg=self.BODY_BG)
         modal.geometry(f"{width}x{height}+{final_x}+{start_y}")
 
         # Start transparent for fade-in animation
@@ -721,31 +725,14 @@ class PremiumAppShell(ctk.CTkFrame):
         def close_modal():
             fade_out()
 
-        # ---------------------------------------------------------
-        # Outer dark shadow layer
-        # ---------------------------------------------------------
-        shadow = ctk.CTkFrame(
-            modal,
-            fg_color="#000000",
-            corner_radius=28
-        )
-        shadow.pack(fill="both", expand=True)
-
-        # ---------------------------------------------------------
-        # Main popup card
-        # ---------------------------------------------------------
         card = ctk.CTkFrame(
-            shadow,
+            modal,
             fg_color="#F7F7FA",
-            corner_radius=28,
+            corner_radius=24,
+            border_width=1,
+            border_color="#E3D9C9",
         )
-        card.place(
-            relx=0.5,
-            rely=0.5,
-            anchor="center",
-            relwidth=0.965,
-            relheight=0.965
-        )
+        card.pack(fill="both", expand=True, padx=8, pady=8)
 
         # Small top spacer
         ctk.CTkFrame(card, fg_color="transparent", height=10).pack()
@@ -753,12 +740,12 @@ class PremiumAppShell(ctk.CTkFrame):
         # Icon circle
         icon_circle = ctk.CTkFrame(
             card,
-            width=84,
-            height=84,
-            corner_radius=42,
+            width=66,
+            height=66,
+            corner_radius=33,
             fg_color=icon_bg
         )
-        icon_circle.pack(pady=(8, 6))
+        icon_circle.pack(pady=(6, 4))
         icon_circle.pack_propagate(False)
 
         # Try to add custom image icon first
@@ -799,26 +786,26 @@ class PremiumAppShell(ctk.CTkFrame):
             text_color="#2E2418",
             font=("Arial", 20, "bold"),
             justify="center"
-        ).pack(pady=(10, 8))
+        ).pack(pady=(8, 6))
 
         # ---------------------------------------------------------
         # Content area for rows
         # Tighter padding so bottom content stays visible
         # ---------------------------------------------------------
         content_wrap = ctk.CTkFrame(card, fg_color="transparent")
-        content_wrap.pack(fill="both", expand=True, padx=55, pady=(0, 6))
+        content_wrap.pack(fill="both", expand=True, padx=34, pady=(0, 4))
 
         # Build each info row
         for label_text, value_text in rows:
             row_card = ctk.CTkFrame(
                 content_wrap,
                 fg_color="#F1ECE3",
-                corner_radius=18,
+                corner_radius=14,
                 border_width=1,
                 border_color="#E1D6C5",
-                height=42
+                height=38
             )
-            row_card.pack(fill="x", pady=5)
+            row_card.pack(fill="x", pady=4)
             row_card.pack_propagate(False)
 
             inner = ctk.CTkFrame(row_card, fg_color="transparent")
@@ -865,14 +852,14 @@ class PremiumAppShell(ctk.CTkFrame):
             card,
             text=button_text,
             command=close_modal,
-            fg_color="#CDAA45",
-            hover_color="#B89232",
-            text_color="#2A2115",
-            corner_radius=22,
-            font=("Arial", 18, "bold"),
-            height=50,
-            width=260
-        ).pack(pady=(6, 14))
+            fg_color="#E656A0",
+            hover_color="#D84B94",
+            text_color="#FFFFFF",
+            corner_radius=16,
+            font=("Arial", 16, "bold"),
+            height=44,
+            width=190
+        ).pack(pady=(4, 10))
 
         # ESC key also closes the popup
         modal.bind("<Escape>", lambda e: close_modal())

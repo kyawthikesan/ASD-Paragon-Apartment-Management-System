@@ -19,7 +19,7 @@ class AuthController:
 
     @staticmethod
     def login(username: str, password: str):
-        user = UserDAO.get_user_by_username(username)
+        user = UserDAO.get_user_by_username((username or "").strip())
 
         if user is None:
             return False, "User not found."
@@ -30,8 +30,34 @@ class AuthController:
         if not verify_password(password, user["password_hash"]):
             return False, "Incorrect password."
 
+        UserDAO.update_last_login(int(user["id"]))
+        user = UserDAO.get_user_by_username(str(user["username"]))
         AuthController.current_user = user
         return True, f"Welcome {user['full_name']}"
+
+    @staticmethod
+    def refresh_current_user() -> None:
+        """
+        Reload current user from DB so role/location/active state stay in sync
+        with recent admin edits.
+        """
+        user = AuthController.current_user
+        if not user:
+            return
+        try:
+            username = str(user["username"]).strip()
+        except Exception:
+            AuthController.current_user = None
+            return
+
+        latest = UserDAO.get_user_by_username(username)
+        if latest is None:
+            AuthController.current_user = None
+            return
+        if int(latest["is_active"]) != 1:
+            AuthController.current_user = None
+            return
+        AuthController.current_user = latest
 
     @staticmethod
     def logout() -> None:

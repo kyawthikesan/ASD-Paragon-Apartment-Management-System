@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS users (
     location TEXT,
     is_active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL,
+    last_login TEXT,
 
     FOREIGN KEY (role_id) 
         REFERENCES roles(id)

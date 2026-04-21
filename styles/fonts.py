@@ -1,3 +1,7 @@
+# Student Name: Shune Pyae Pyae (Evelyn) Aung
+# Student ID: 24028257
+# Module: UFCF8S-30-2 Advanced Software Development
+
 FONT_LABEL   = ("Segoe UI", 8, "bold")
 FONT_INPUT   = ("Segoe UI", 12)
 FONT_BTN     = ("Segoe UI", 11, "bold")

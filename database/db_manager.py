@@ -125,6 +125,11 @@ class DBManager:
         """)
 
         cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(users)")
+        user_columns = {str(row["name"]).strip().lower() for row in cursor.fetchall()}
+        if "last_login" not in user_columns:
+            cursor.execute("ALTER TABLE users ADD COLUMN last_login TEXT")
+
         cursor.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='maintenance'"
         )

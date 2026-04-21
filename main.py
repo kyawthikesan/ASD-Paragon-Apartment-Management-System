@@ -124,10 +124,17 @@ class PAMSApp(tk.Tk):
         for widget in self.container.winfo_children():
             widget.destroy()
 
+    def _set_container_bg(self, color: str):
+        """
+        Set container background using tkinter's base configure path.
+        This avoids CustomTkinter's patched `configure` callbacks on destroyed children.
+        """
+        tk.Frame.configure(self.container, bg=color)
+
     def show_login(self):
         """Show login screen."""
         self.configure(bg=BG_MAIN)
-        self.container.configure(bg=BG_MAIN)
+        self._set_container_bg(BG_MAIN)
         self.clear_view()
 
         # LoginView usually expects parent container + success callback
@@ -135,6 +142,7 @@ class PAMSApp(tk.Tk):
 
     def route_dashboard_by_role(self, role: str | None = None):
         """Route user to the correct dashboard based on role."""
+        AuthController.refresh_current_user()
         role_name = role or AuthController.get_current_role()
 
         if role_name == "admin":
@@ -153,7 +161,7 @@ class PAMSApp(tk.Tk):
     def show_dashboard(self):
         """Show main dashboard for admin / manager / front desk."""
         self.configure(bg=LEFT_BG)
-        self.container.configure(bg=LEFT_BG)
+        self._set_container_bg(LEFT_BG)
         self.clear_view()
 
         try:
@@ -244,7 +252,7 @@ class PAMSApp(tk.Tk):
         Tries multiple constructor styles to support your different screen classes.
         """
         self.configure(bg=LEFT_BG)
-        self.container.configure(bg=LEFT_BG)
+        self._set_container_bg(LEFT_BG)
         self.clear_view()
         try:
             try:
