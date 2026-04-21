@@ -60,6 +60,9 @@ class LeaseView(tk.Frame):
 
         ttk.Button(form_frame, text="Create Lease", command=self.create_lease)\
             .grid(row=4, column=0, columnspan=2, pady=10)
+        
+        ttk.Button(form_frame, text="Terminate Lease", command=self.terminate_lease)\
+            .grid(row=5, column=0, columnspan=2, pady=5)
 
         # TABLE
         table_frame = ttk.LabelFrame(main_frame, text="Leases", padding=10)
@@ -68,6 +71,7 @@ class LeaseView(tk.Frame):
         columns = ("ID", "Tenant", "Apartment", "Start", "End", "Status")
 
         self.table = ttk.Treeview(table_frame, columns=columns, show="headings")
+        self.table.bind("<<TreeviewSelect>>", self.select_lease)
 
         for col in columns:
             self.table.heading(col, text=col)
@@ -121,8 +125,10 @@ class LeaseView(tk.Frame):
             messagebox.showinfo("Success", "Lease created")
             self.load_leases()
             self.clear_fields()
+            self.load_available_apartments()
         else:
             messagebox.showerror("Error", result)
+        
 
     def load_leases(self):
         LeaseDAO.expire_leases()
@@ -140,7 +146,108 @@ class LeaseView(tk.Frame):
                 lease["end_date"],
                 lease["status"]
             ))
+
+    def select_lease(self, event):
+        selected = self.table.selection()
+        if not selected:
+            return
+
+        values = self.table.item(selected[0], "values")
+
+        self.selected_lease_id = values[0]
+        self.selected_tenant = values[1]
+        self.selected_apartment = values[2]
+        self.selected_start = values[3]
+        self.selected_end = values[4]
+        self.selected_status = values[5]
+
+    def terminate_lease(self):
+        if not hasattr(self, "selected_lease_id"):
+            messagebox.showerror("Error", "Please select a lease")
+            return
+
+        self.open_termination_window()
             
+    def open_termination_window(self):
+        window = tk.Toplevel(self)
+        window.title("Terminate Lease")
+        window.after(10, lambda: self.center_window(window, 400, 450))
+        window.resizable(False, False)
+
+        ttk.Label(window, text="Lease Termination", font=("Arial", 14, "bold")).pack(pady=10)
+
+        ttk.Label(window, text="⚠ Early Termination Policy", font=("Arial", 10, "bold")).pack(pady=5)
+
+        ttk.Label(window, text="• 1 month notice required").pack()
+        ttk.Label(window, text="• 5% penalty on monthly rent").pack()
+        ttk.Label(window, text="• Lease will be ended immediately").pack()
+        ttk.Label(window, text="• Apartment will become available").pack()
+
+        ttk.Button(
+            window,
+            text="Confirm Termination",
+            command=lambda: self.confirm_termination(window)
+        ).pack(pady=20)
+
+        ttk.Button(
+            window,
+            text="Cancel",
+            command=window.destroy
+        ).pack()        
+
+    def confirm_termination(self, window):
+        penalty = LeaseDAO.terminate_lease(self.selected_lease_id)
+
+        window.destroy()
+
+        self.show_termination_record(penalty)
+
+        self.load_leases()
+        self.load_available_apartments()
+
+    def show_termination_record(self, penalty):
+        record = tk.Toplevel(self)
+        record.title("Lease Termination Record")
+        record.after(10, lambda: self.center_window(record, 400, 450))
+        record.resizable(False, False)
+
+        ttk.Label(record, text="Lease Termination Record", font=("Arial", 14, "bold")).pack(pady=10)
+
+        ttk.Separator(record).pack(fill="x", padx=10, pady=5)
+
+        ttk.Label(record, text=f"Lease ID: {self.selected_lease_id}").pack(pady=5)
+        ttk.Label(record, text=f"Tenant: {self.selected_tenant}").pack(pady=5)
+        ttk.Label(record, text=f"Apartment: {self.selected_apartment}").pack(pady=5)
+
+        ttk.Label(record, text=f"Start Date: {self.selected_start}").pack(pady=5)
+        ttk.Label(record, text=f"End Date: {self.selected_end}").pack(pady=5)
+
+        today = date.today().isoformat()
+        ttk.Label(record, text=f"Termination Date: {today}").pack(pady=5)
+
+        ttk.Label(record, text=f"Penalty Charged: £{penalty:.2f}").pack(pady=5)
+
+        status_text = "Early Termination" if penalty > 0 else "Contract Completed"
+        ttk.Label(record, text=f"Termination Type: {status_text}").pack(pady=5)
+
+        ttk.Separator(record).pack(fill="x", padx=10, pady=10)
+
+        ttk.Label(record, text="✔ Lease status updated to 'Ended'").pack(pady=3)
+        ttk.Label(record, text="✔ Apartment marked as 'AVAILABLE'").pack(pady=3)
+
+        ttk.Button(record, text="Close", command=record.destroy).pack(pady=15)
+
+    def center_window(self, win, width=400, height=450):
+        win.update_idletasks()
+
+        screen_width = win.winfo_screenwidth()
+        screen_height = win.winfo_screenheight()
+
+        x = (screen_width // 2) - (width // 2)
+        y = (screen_height // 2) - (height // 2)
+
+        win.geometry(f"{width}x{height}+{x}+{y}")
+
     def clear_fields(self):
         self.tenant_combo.set("")
         self.apartment_combo.set("")

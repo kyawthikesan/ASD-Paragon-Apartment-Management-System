@@ -11,10 +11,11 @@ class ApartmentDAO:
         cursor.execute("""
         INSERT INTO apartments (location_id, type, rent, rooms, status)
         VALUES (?, ?, ?, ?, ?)
-        """, (location_id, type, rent, rooms, "Available"))
+        """, (location_id, type, rent, rooms, "AVAILABLE"))
 
         conn.commit()
         conn.close()
+
 
     @staticmethod
     def get_all_apartments(city=None):
@@ -42,6 +43,7 @@ class ApartmentDAO:
         conn.close()
         return rows
 
+
     @staticmethod
     def update_apartment(apartmentID, location_id, type, rent, rooms):
         conn = DBManager.get_connection()
@@ -56,6 +58,7 @@ class ApartmentDAO:
         conn.commit()
         conn.close()
 
+
     @staticmethod
     def delete_apartment(apartmentID):
         conn = DBManager.get_connection()
@@ -65,6 +68,7 @@ class ApartmentDAO:
 
         conn.commit()
         conn.close()
+
 
     @staticmethod
     def search_apartment(keyword, city=None):
@@ -91,6 +95,11 @@ class ApartmentDAO:
         rows = cursor.fetchall()
         conn.close()
         return rows
+
+        rows = cursor.fetchall()
+        conn.close()
+        return rows
+
 
     @staticmethod
     def get_available_apartments(city=None):

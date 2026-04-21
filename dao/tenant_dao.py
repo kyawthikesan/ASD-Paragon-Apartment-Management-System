@@ -18,6 +18,14 @@ class TenantDAO:
     @staticmethod
     def get_all_tenants(city=None):
         conn = DBManager.get_connection()
+        conn.row_factory = lambda cursor, row: {
+            "tenantID": row[0],
+            "name": row[1],
+            "NI_number": row[2],
+            "phone": row[3],
+            "email": row[4],
+            "lease_status": row[5]
+        }
         cursor = conn.cursor()
 
         if city:

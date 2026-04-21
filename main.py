@@ -24,6 +24,7 @@ from styles.ttk_theme import apply_ttk_theme
 from styles.colors import LEFT_BG, BG_MAIN
 
 
+
 class PAMSApp(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -245,6 +246,46 @@ class PAMSApp(tk.Tk):
         self.configure(bg=LEFT_BG)
         self.container.configure(bg=LEFT_BG)
         self.clear_view()
+        try:
+            self.current_view = view_class(
+                self,
+                self.logout,
+                self.route_dashboard_by_role,
+                **view_kwargs
+            )
+        except Exception as error:
+            details = traceback.format_exc(limit=8)
+            fallback = ttk.Frame(self, padding=24)
+            fallback.pack(fill="both", expand=True)
+
+            ttk.Label(
+                fallback,
+                text=f"{view_name} failed to load",
+                font=("Arial", 14, "bold")
+            ).pack(anchor="w", pady=(0, 8))
+
+            ttk.Label(
+                fallback,
+                text=str(error)
+            ).pack(anchor="w", pady=(0, 8))
+
+            ttk.Label(
+                fallback,
+                text=details
+            ).pack(anchor="w")
+
+            ttk.Button(
+                fallback,
+                text="Back to Login",
+                command=self.logout
+            ).pack(anchor="w", pady=(12, 0))
+
+            self.current_view = fallback
+
+    def _require_feature_access(self, feature_key: str, feature_name: str) -> bool:
+        role = AuthController.get_current_role()
+        if AuthController.can_access_feature(feature_key, role):
+            return True
 
         try:
             try:

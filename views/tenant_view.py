@@ -100,7 +100,7 @@ class TenantView(tk.Frame):
         table_container = ttk.Frame(table_frame)
         table_container.pack(fill="both", expand=True)
 
-        columns = ("ID", "Name", "NI Number", "Phone", "Email")
+        columns = ("ID", "Name", "NI Number", "Phone", "Email", "Lease Status")
 
         self.table = ttk.Treeview(table_container, columns=columns, show="headings")
 
@@ -109,6 +109,9 @@ class TenantView(tk.Frame):
             self.table.column(col, width=140, anchor="center", stretch=True)
             self.table.tag_configure("odd", background="#f9f9f9")
             self.table.tag_configure("even", background="#ffffff")
+            self.table.tag_configure("active", foreground="green")
+            self.table.tag_configure("ended", foreground="red")
+            self.table.tag_configure("no_lease", foreground="gray")
             
 
         # table
@@ -134,15 +137,7 @@ class TenantView(tk.Frame):
         tenants = TenantController.get_all_tenants(city=self.city_scope)
 
         for i, tenant in enumerate(tenants):
-            tag = "even" if i % 2 == 0 else "odd"
-
-            self.table.insert("", tk.END, values=(
-                tenant["tenantID"],
-                tenant["name"],
-                tenant["NI_number"],
-                tenant["phone"],
-                tenant["email"]
-            ), tags=(tag,))
+            self.insert_tenant_row(tenant, i)
 
     # ======================
     # FILL FORM
@@ -264,13 +259,31 @@ class TenantView(tk.Frame):
         for row in self.table.get_children():
             self.table.delete(row)
 
-        for tenant in tenants:
-            self.table.insert("", tk.END, values=(
-                tenant["tenantID"],
-                tenant["name"],
-                tenant["NI_number"],
-                tenant["phone"],
-                tenant["email"]
-            ))
+        for i, tenant in enumerate(tenants):
+            self.insert_tenant_row(tenant, i)
+
+    def insert_tenant_row(self, tenant, i):
+        base_tag = "even" if i % 2 == 0 else "odd"
+
+        status = tenant["lease_status"]
+
+        if status == "Active":
+            display_status = "🟢 Active"
+            status_tag = "active"
+        elif status == "Ended":
+            display_status = "🔴 Ended"
+            status_tag = "ended"
+        else:
+            display_status = "⚪ No Lease"
+            status_tag = "no_lease"
+
+        self.table.insert("", tk.END, values=(
+            tenant["tenantID"],
+            tenant["name"],
+            tenant["NI_number"],
+            tenant["phone"],
+            tenant["email"],
+            display_status
+        ), tags=(base_tag, status_tag))
 
     
