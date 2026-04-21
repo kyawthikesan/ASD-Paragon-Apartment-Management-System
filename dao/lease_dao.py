@@ -167,6 +167,25 @@ class LeaseDAO:
         return result and result[0] == "AVAILABLE"
 
     # =========================
+    # CHECK APARTMENT AVAILABILITY
+    # =========================
+    @staticmethod
+    def is_apartment_available(apartmentID):
+        conn = DBManager.get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+        SELECT status
+        FROM apartments
+        WHERE apartmentID = ?
+        """, (apartmentID,))
+
+        result = cursor.fetchone()
+        conn.close()
+
+        return result and result[0] == "AVAILABLE"
+
+    # =========================
     # MARK APARTMENT OCCUPIED
     # =========================
     @staticmethod
