@@ -1,72 +1,62 @@
-from datetime import datetime
-from database.db_manager import DBManager
-
+import sqlite3
+import os
 
 class MaintenanceDAO:
-    @staticmethod
-    def add_request(apartmentID, tenantID, title, description, priority="Medium", status="Open"):
-        now = datetime.now().isoformat(timespec="seconds")
-        conn = DBManager.get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            INSERT INTO maintenance_requests (
-                apartmentID, tenantID, title, description, priority, status, created_at, updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (apartmentID, tenantID, title, description, priority, status, now, now),
-        )
-        conn.commit()
-        request_id = cursor.lastrowid
-        conn.close()
-        return request_id
+    def __init__(self):
+        # 1. This finds the absolute path of the folder where THIS script is saved 
+        self.base_dir = os.path.dirname(os.path.abspath(__file__))
+        self.db_path = os.path.join(self.base_dir, "system.db")
+        
+        # 2. Connect using the absolute path
+        self.conn = sqlite3.connect(self.db_path)
+        self.create_tables()
 
-    @staticmethod
-    def get_all_requests(city=None):
-        conn = DBManager.get_connection()
-        cursor = conn.cursor()
-        query = """
-            SELECT
-                m.requestID,
-                m.apartmentID,
-                a.type AS apartment_type,
-                loc.city,
-                m.tenantID,
-                t.name AS tenant_name,
-                m.title,
-                m.description,
-                m.priority,
-                m.status,
-                m.created_at,
-                m.updated_at
-            FROM maintenance_requests m
-            LEFT JOIN apartments a ON m.apartmentID = a.apartmentID
-            LEFT JOIN locations loc ON a.location_id = loc.location_id
-            LEFT JOIN tenants t ON m.tenantID = t.tenantID
-            """
-        params = []
-        if city:
-            query += " WHERE loc.city = ?"
-            params.append(city)
-        query += " ORDER BY m.requestID DESC"
-        cursor.execute(query, tuple(params))
-        rows = cursor.fetchall()
-        conn.close()
-        return rows
+    def create_tables(self):
+        with self.conn:
+            # Table for complaints 
+            self.conn.execute("""
+                CREATE TABLE IF NOT EXISTS complaints (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    description TEXT,
+                    status TEXT DEFAULT 'Open'
+                )
+            """)
+            # Table for maintenance requests [cite: 62, 66]
+            self.conn.execute("""
+                CREATE TABLE IF NOT EXISTS maintenance_requests (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    complaint_id INTEGER,
+                    staff_name TEXT,
+                    scheduled_date TEXT,
+                    status TEXT DEFAULT 'Pending',
+                    cost REAL DEFAULT 0.0,
+                    hours_spent INTEGER DEFAULT 0,
+                    FOREIGN KEY (complaint_id) REFERENCES complaints (id)
+                )
+            """)
 
-    @staticmethod
-    def update_request_status(request_id, status):
-        now = datetime.now().isoformat(timespec="seconds")
-        conn = DBManager.get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            UPDATE maintenance_requests
-            SET status = ?, updated_at = ?
-            WHERE requestID = ?
-            """,
-            (status, now, request_id),
-        )
-        conn.commit()
-        conn.close()
+    def log_request(self, complaint_id):
+        with self.conn:
+            self.conn.execute("INSERT INTO maintenance_requests (complaint_id) VALUES (?)", (complaint_id,))
+
+    def update_maintenance(self, req_id, staff, date, status, cost, hours):
+        query = "UPDATE maintenance_requests SET staff_name=?, scheduled_date=?, status=?, cost=?, hours_spent=? WHERE id=?"
+        with self.conn:
+            self.conn.execute(query, (staff, date, status, cost, hours, req_id))
+
+    def get_all_requests(self):
+        cursor = self.conn.execute("SELECT * FROM maintenance_requests")
+        return cursor.fetchall()
+
+    def get_cost_report_data(self):
+        # Generates a report on costs and hours 
+        cursor = self.conn.execute("SELECT SUM(cost), SUM(hours_spent), COUNT(id) FROM maintenance_requests WHERE status='Resolved'")
+        return cursor.fetchone()
+
+# --- Verification Logic ---
+if __name__ == "__main__":
+    dao = MaintenanceDAO()
+    if os.path.exists(dao.db_path):
+        print(f"system.db created successfully at: {dao.db_path}")
+    else:
+        print("Error: Database file still not found.")
