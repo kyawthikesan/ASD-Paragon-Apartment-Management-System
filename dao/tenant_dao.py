@@ -28,30 +28,57 @@ class TenantDAO:
         }
         cursor = conn.cursor()
 
+        lease_summary_sql = """
+            SELECT
+                tenantID,
+                CASE
+                    WHEN SUM(CASE WHEN LOWER(TRIM(status)) = 'active' THEN 1 ELSE 0 END) > 0
+                        THEN 'Active'
+                    WHEN COUNT(*) > 0
+                        THEN MAX(status)
+                    ELSE 'No Lease'
+                END AS lease_status
+            FROM leases
+            GROUP BY tenantID
+        """
+
         if city:
             cursor.execute(
                 """
-                SELECT DISTINCT
+                SELECT
                     t.tenantID,
                     t.name,
                     t.NI_number,
                     t.phone,
-                    t.email
+                    t.email,
+                    COALESCE(ls.lease_status, 'No Lease') AS lease_status
                 FROM tenants t
-                JOIN leases l ON t.tenantID = l.tenantID
-                JOIN apartments a ON l.apartmentID = a.apartmentID
-                LEFT JOIN locations loc ON a.location_id = loc.location_id
-                WHERE loc.city = ?
+                LEFT JOIN ({lease_summary}) ls ON t.tenantID = ls.tenantID
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM leases l
+                    JOIN apartments a ON l.apartmentID = a.apartmentID
+                    LEFT JOIN locations loc ON a.location_id = loc.location_id
+                    WHERE l.tenantID = t.tenantID
+                    AND loc.city = ?
+                )
                 ORDER BY t.tenantID DESC
-                """,
+                """.format(lease_summary=lease_summary_sql),
                 (city,),
             )
         else:
             cursor.execute("""
-            SELECT tenantID, name, NI_number, phone, email 
-            FROM tenants
-            ORDER BY tenantID DESC
-            """)
+                SELECT
+                    t.tenantID,
+                    t.name,
+                    t.NI_number,
+                    t.phone,
+                    t.email,
+                    COALESCE(ls.lease_status, 'No Lease') AS lease_status
+                FROM tenants t
+                LEFT JOIN ({lease_summary}) ls ON t.tenantID = ls.tenantID
+                ORDER BY t.tenantID DESC
+            """.format(lease_summary=lease_summary_sql))
 
         rows = cursor.fetchall()
         conn.close()

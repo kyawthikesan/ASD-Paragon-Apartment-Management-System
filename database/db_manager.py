@@ -108,7 +108,59 @@ class DBManager:
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(invoiceID) REFERENCES invoices(invoiceID)
         );
+
+        CREATE TABLE IF NOT EXISTS maintenance_requests (
+            requestID INTEGER PRIMARY KEY AUTOINCREMENT,
+            apartmentID INTEGER,
+            tenantID INTEGER,
+            title TEXT NOT NULL,
+            description TEXT,
+            priority TEXT NOT NULL DEFAULT 'Medium',
+            status TEXT NOT NULL DEFAULT 'Open',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(apartmentID) REFERENCES apartments(apartmentID),
+            FOREIGN KEY(tenantID) REFERENCES tenants(tenantID)
+        );
         """)
+
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='maintenance'"
+        )
+        has_legacy_maintenance = cursor.fetchone() is not None
+        if has_legacy_maintenance:
+            cursor.execute(
+                """
+                INSERT INTO maintenance_requests (
+                    requestID,
+                    apartmentID,
+                    tenantID,
+                    title,
+                    description,
+                    priority,
+                    status,
+                    created_at,
+                    updated_at
+                )
+                SELECT
+                    m.requestID,
+                    m.apartmentID,
+                    m.tenantID,
+                    COALESCE(NULLIF(TRIM(m.title), ''), 'Maintenance Request'),
+                    m.description,
+                    COALESCE(NULLIF(TRIM(m.priority), ''), 'Medium'),
+                    COALESCE(NULLIF(TRIM(m.status), ''), 'Open'),
+                    COALESCE(m.created_at, CURRENT_TIMESTAMP),
+                    COALESCE(m.updated_at, COALESCE(m.created_at, CURRENT_TIMESTAMP))
+                FROM maintenance m
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM maintenance_requests mr
+                    WHERE mr.requestID = m.requestID
+                )
+                """
+            )
 
         conn.commit()
         conn.close()
