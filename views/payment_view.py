@@ -7,24 +7,39 @@ from dao.lease_dao import LeaseDAO
 from dao.invoice_dao import InvoiceDAO
 from dao.payment_dao import PaymentDAO
 from dao.report_dao import ReportDAO
+from dao.location_dao import LocationDAO
+from controllers.auth_controller import AuthController
 
 
 class FinanceDashboardView(ttk.Frame):
-    def __init__(self, parent, logout_callback=None, home_callback=None, initial_tab="Invoices"):
+    def __init__(
+        self,
+        parent,
+        logout_callback=None,
+        home_callback=None,
+        initial_tab="Invoices",
+        visible_tabs=None,
+    ):
         super().__init__(parent)
         self.parent = parent
         self.logout_callback = logout_callback
         self.home_callback = home_callback
-      
+        self.initial_tab = initial_tab
+        self.is_admin = AuthController.is_admin()
+        self.selected_city = "All Cities" if self.is_admin else (AuthController.get_current_location() or "All Cities")
+        self.city_scope = AuthController.get_city_scope(self.selected_city)
 
         self.pack(fill="both", expand=True)
 
         self.lease_map = {}
         self.invoice_map = {}
+        self._all_tabs = ("Invoices", "Payments", "Reports")
+        requested_tabs = tuple(visible_tabs) if visible_tabs else self._all_tabs
+        self.enabled_tabs = tuple(tab for tab in self._all_tabs if tab in requested_tabs) or self._all_tabs
 
         self._build_layout()
+        self._select_initial_tab()
         self.refresh_all()
-        self.initial_tab = initial_tab
 
     # =========================
     # MAIN LAYOUT
@@ -38,6 +53,15 @@ class FinanceDashboardView(ttk.Frame):
             text="Finance Dashboard",
             font=("Arial", 18, "bold")
         ).pack(side="left")
+
+        if self.is_admin:
+            city_options = ["All Cities"] + sorted(
+                {str(loc["city"]).strip() for loc in LocationDAO.get_all_locations() if str(loc["city"]).strip()}
+            )
+            self.city_filter_combo = ttk.Combobox(top_bar, state="readonly", values=city_options, width=18)
+            self.city_filter_combo.pack(side="left", padx=(16, 6))
+            self.city_filter_combo.set(self.selected_city if self.selected_city in city_options else "All Cities")
+            self.city_filter_combo.bind("<<ComboboxSelected>>", self._on_city_filter_change)
 
         if self.home_callback:
             ttk.Button(
@@ -62,24 +86,34 @@ class FinanceDashboardView(ttk.Frame):
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(fill="both", expand=True, padx=12, pady=(0, 12))
 
-        self.invoice_tab = ttk.Frame(self.notebook, padding=12)
-        self.payment_tab = ttk.Frame(self.notebook, padding=12)
-        self.report_tab = ttk.Frame(self.notebook, padding=12)
+        if "Invoices" in self.enabled_tabs:
+            self.invoice_tab = ttk.Frame(self.notebook, padding=12)
+            self.notebook.add(self.invoice_tab, text="Invoices")
+            self._build_invoice_tab()
 
-        self.notebook.add(self.invoice_tab, text="Invoices")
-        self.notebook.add(self.payment_tab, text="Payments")
-        self.notebook.add(self.report_tab, text="Reports")
+        if "Payments" in self.enabled_tabs:
+            self.payment_tab = ttk.Frame(self.notebook, padding=12)
+            self.notebook.add(self.payment_tab, text="Payments")
+            self._build_payment_tab()
 
-        self._build_invoice_tab()
-        self._build_payment_tab()
-        self._build_report_tab()
+        if "Reports" in self.enabled_tabs:
+            self.report_tab = ttk.Frame(self.notebook, padding=12)
+            self.notebook.add(self.report_tab, text="Reports")
+            self._build_report_tab()
+
     def _select_initial_tab(self):
-        tab_map = {
-            "Invoices": self.invoice_tab,
-            "Payments": self.payment_tab,
-            "Reports": self.report_tab,
-        }
-        target = tab_map.get(self.initial_tab, self.invoice_tab)
+        tab_map = {}
+        if hasattr(self, "invoice_tab"):
+            tab_map["Invoices"] = self.invoice_tab
+        if hasattr(self, "payment_tab"):
+            tab_map["Payments"] = self.payment_tab
+        if hasattr(self, "report_tab"):
+            tab_map["Reports"] = self.report_tab
+
+        if not tab_map:
+            return
+
+        target = tab_map.get(self.initial_tab) or next(iter(tab_map.values()))
         self.notebook.select(target)
 
     # =========================
@@ -333,11 +367,16 @@ class FinanceDashboardView(ttk.Frame):
         """
         Refresh all dashboard data.
         """
-        self._load_lease_options()
-        self._load_invoice_table()
-        self._load_open_invoice_options()
-        self._load_payment_table()
-        self._load_reports()
+        if hasattr(self, "lease_combo"):
+            self._load_lease_options()
+        if hasattr(self, "invoice_tree"):
+            self._load_invoice_table()
+        if hasattr(self, "open_invoice_combo"):
+            self._load_open_invoice_options()
+        if hasattr(self, "payment_tree"):
+            self._load_payment_table()
+        if hasattr(self, "city_tree"):
+            self._load_reports()
 
     # =========================
     # LOAD LEASE OPTIONS
@@ -348,7 +387,7 @@ class FinanceDashboardView(ttk.Frame):
         """
         self.lease_map.clear()
 
-        leases = LeaseDAO.get_all_leases_with_financial_details()
+        leases = LeaseDAO.get_all_leases_with_financial_details(city=self.city_scope)
         active_leases = [lease for lease in leases if str(lease.get("status", "")).lower() == "active"]
 
         values = []
@@ -386,7 +425,7 @@ class FinanceDashboardView(ttk.Frame):
             self.invoice_tree.delete(item)
 
         InvoiceDAO.mark_overdue_invoices()
-        invoices = InvoiceDAO.get_all_invoices()
+        invoices = InvoiceDAO.get_all_invoices(city=self.city_scope)
 
         for inv in invoices:
             period = f"{inv['billing_period_start']} to {inv['billing_period_end']}"
@@ -412,19 +451,48 @@ class FinanceDashboardView(ttk.Frame):
         Load unpaid / partial / late invoices into payment combobox.
         """
         self.invoice_map.clear()
+        open_invoices = []
 
-        InvoiceDAO.mark_overdue_invoices()
-        open_invoices = InvoiceDAO.get_open_invoices()
+        try:
+            InvoiceDAO.mark_overdue_invoices()
+            open_invoices = InvoiceDAO.get_open_invoices(city=self.city_scope)
+        except Exception:
+            open_invoices = []
+
+        if not open_invoices:
+            # Fallback for legacy/mixed status text so invoices remain payable.
+            try:
+                all_invoices = InvoiceDAO.get_all_invoices(city=self.city_scope)
+            except Exception:
+                all_invoices = []
+
+            open_invoices = [
+                inv
+                for inv in all_invoices
+                if str(inv.get("status", "")).strip().upper() != "PAID"
+            ]
 
         values = []
         for inv in open_invoices:
-            outstanding = InvoiceDAO.get_outstanding_balance(inv["invoiceID"])
+            invoice_id = inv.get("invoiceID")
+            if invoice_id is None:
+                continue
+
+            try:
+                outstanding = InvoiceDAO.get_outstanding_balance(invoice_id)
+            except Exception:
+                outstanding = float(inv.get("amount_due", 0) or 0)
+
+            tenant_name = inv.get("tenant_name", "Unknown Tenant")
+            city_name = inv.get("city", "Unknown")
+            status_text = str(inv.get("status", "UNPAID")).strip().upper()
+
             label = (
-                f"Invoice #{inv['invoiceID']} | "
-                f"{inv['tenant_name']} | "
-                f"{inv.get('city', 'Unknown')} | "
+                f"Invoice #{invoice_id} | "
+                f"{tenant_name} | "
+                f"{city_name} | "
                 f"Outstanding: {outstanding:.2f} | "
-                f"Status: {inv['status']}"
+                f"Status: {status_text}"
             )
             self.invoice_map[label] = inv
             values.append(label)
@@ -448,7 +516,7 @@ class FinanceDashboardView(ttk.Frame):
         for item in self.payment_tree.get_children():
             self.payment_tree.delete(item)
 
-        payments = PaymentDAO.get_all_payments()
+        payments = PaymentDAO.get_all_payments(city=self.city_scope)
 
         for pay in payments:
             self.payment_tree.insert(
@@ -472,7 +540,7 @@ class FinanceDashboardView(ttk.Frame):
         """
         Refresh summary values and report tables.
         """
-        summary = ReportDAO.get_overall_financial_summary()
+        summary = ReportDAO.get_overall_financial_summary(city=self.city_scope)
         self.total_invoiced_var.set(f"{float(summary['total_invoiced']):.2f}")
         self.total_collected_var.set(f"{float(summary['total_collected']):.2f}")
         self.total_pending_var.set(f"{float(summary['total_pending']):.2f}")
@@ -482,6 +550,8 @@ class FinanceDashboardView(ttk.Frame):
             self.city_tree.delete(item)
 
         city_rows = ReportDAO.get_financial_summary_by_city()
+        if self.city_scope:
+            city_rows = [row for row in city_rows if str(row.get("city", "")).strip() == self.city_scope]
         for row in city_rows:
             self.city_tree.insert(
                 "",
@@ -498,7 +568,7 @@ class FinanceDashboardView(ttk.Frame):
         for item in self.late_tree.get_children():
             self.late_tree.delete(item)
 
-        late_rows = ReportDAO.get_late_invoices()
+        late_rows = ReportDAO.get_late_invoices(city=self.city_scope)
         for row in late_rows:
             self.late_tree.insert(
                 "",
@@ -610,6 +680,13 @@ class FinanceDashboardView(ttk.Frame):
 
         outstanding = InvoiceDAO.get_outstanding_balance(invoice["invoiceID"])
         self.amount_paid_var.set(f"{outstanding:.2f}")
+
+    def _on_city_filter_change(self, _event=None):
+        if not self.is_admin:
+            return
+        self.selected_city = self.city_filter_combo.get().strip() or "All Cities"
+        self.city_scope = AuthController.get_city_scope(self.selected_city)
+        self.refresh_all()
 
     # =========================
     # RECORD PAYMENT

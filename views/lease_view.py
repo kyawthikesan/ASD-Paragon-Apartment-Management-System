@@ -6,16 +6,18 @@ from datetime import timedelta
 from dao.apartment_dao import ApartmentDAO
 from dao.tenant_dao import TenantDAO
 from dao.lease_dao import LeaseDAO
-from datetime import date
+from controllers.auth_controller import AuthController
 
 class LeaseView(tk.Frame):
 
     def __init__(self, parent, back_callback):
         super().__init__(parent)
         self.pack(fill="both", expand=True)
+        self.city_scope = AuthController.get_city_scope()
 
         main_frame = ttk.Frame(self, padding=20)
         main_frame.pack(fill="both", expand=True)
+        main_frame.columnconfigure(0, weight=1)
 
         # Top
         top_frame = ttk.Frame(main_frame)
@@ -73,14 +75,14 @@ class LeaseView(tk.Frame):
 
         for col in columns:
             self.table.heading(col, text=col)
-            self.table.column(col, width=120)
+            self.table.column(col, width=140, stretch=True, anchor="center")
 
         self.table.pack(fill="both", expand=True)
 
         self.load_leases()
 
     def load_available_apartments(self):
-        apartments = ApartmentDAO.get_available_apartments()
+        apartments = ApartmentDAO.get_available_apartments(city=self.city_scope)
 
         self.apartment_map = {
             f"{apt['city']} - {apt['type']} (#{apt['apartmentID']})": apt["apartmentID"]
@@ -133,7 +135,7 @@ class LeaseView(tk.Frame):
         for row in self.table.get_children():
             self.table.delete(row)
 
-        leases = LeaseController.get_all_leases()
+        leases = LeaseController.get_all_leases(city=self.city_scope)
 
         for lease in leases:
             self.table.insert("", tk.END, values=(

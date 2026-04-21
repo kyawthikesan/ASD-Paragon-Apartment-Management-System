@@ -16,7 +16,7 @@ class TenantDAO:
         conn.close()
 
     @staticmethod
-    def get_all_tenants():
+    def get_all_tenants(city=None):
         conn = DBManager.get_connection()
         conn.row_factory = lambda cursor, row: {
             "tenantID": row[0],
@@ -28,28 +28,30 @@ class TenantDAO:
         }
         cursor = conn.cursor()
 
-        cursor.execute("""
-        SELECT 
-            t.tenantID,
-            t.name,
-            t.NI_number,
-            t.phone,
-            t.email,
-            CASE 
-                WHEN EXISTS (
-                    SELECT 1 FROM leases l 
-                    WHERE l.tenantID = t.tenantID 
-                    AND l.status = 'Active'
-                ) THEN 'Active'
-                WHEN EXISTS (
-                    SELECT 1 FROM leases l 
-                    WHERE l.tenantID = t.tenantID
-                ) THEN 'Ended'
-                ELSE 'NO LEASE'
-            END as lease_status
-        FROM tenants t
-        ORDER BY t.tenantID DESC
-        """)
+        if city:
+            cursor.execute(
+                """
+                SELECT DISTINCT
+                    t.tenantID,
+                    t.name,
+                    t.NI_number,
+                    t.phone,
+                    t.email
+                FROM tenants t
+                JOIN leases l ON t.tenantID = l.tenantID
+                JOIN apartments a ON l.apartmentID = a.apartmentID
+                LEFT JOIN locations loc ON a.location_id = loc.location_id
+                WHERE loc.city = ?
+                ORDER BY t.tenantID DESC
+                """,
+                (city,),
+            )
+        else:
+            cursor.execute("""
+            SELECT tenantID, name, NI_number, phone, email 
+            FROM tenants
+            ORDER BY tenantID DESC
+            """)
 
         rows = cursor.fetchall()
         conn.close()
@@ -78,21 +80,3 @@ class TenantDAO:
 
         conn.commit()
         conn.close()
-
-    @staticmethod
-    def get_available_tenants():
-        conn = DBManager.get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("""
-        SELECT tenantID, name
-        FROM tenants
-        WHERE tenantID NOT IN (
-            SELECT tenantID FROM leases
-            WHERE status = 'Active'
-        )
-        """)
-
-        rows = cursor.fetchall()
-        conn.close()
-        return rows

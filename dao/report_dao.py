@@ -3,11 +3,25 @@ from dao.invoice_dao import InvoiceDAO
 
 
 class ReportDAO:
+    @staticmethod
+    def _payment_schema(cursor):
+        cursor.execute("PRAGMA table_info(payments)")
+        cols = {row["name"] for row in cursor.fetchall()}
+        amount_col = "amount_paid" if "amount_paid" in cols else "amount" if "amount" in cols else None
+        method_col = "payment_method" if "payment_method" in cols else "method" if "method" in cols else None
+        return {
+            "cols": cols,
+            "amount_col": amount_col,
+            "method_col": method_col,
+            "has_invoice_id": "invoiceID" in cols,
+            "has_tenant_apartment": "tenantID" in cols and "apartmentID" in cols,
+        }
+
     # =========================
     # OVERALL FINANCIAL SUMMARY
     # =========================
     @staticmethod
-    def get_overall_financial_summary():
+    def get_overall_financial_summary(city=None):
         """
         Return overall finance totals across the whole system:
         - total invoiced
@@ -20,22 +34,68 @@ class ReportDAO:
 
         conn = DBManager.get_connection()
         cursor = conn.cursor()
+        payment_schema = ReportDAO._payment_schema(cursor)
 
-        cursor.execute("""
-        SELECT
-            COALESCE(SUM(amount_due), 0) AS total_invoiced,
-            COUNT(*) AS invoice_count,
-            SUM(CASE WHEN status = 'PAID' THEN 1 ELSE 0 END) AS paid_invoice_count,
-            SUM(CASE WHEN status = 'LATE' THEN 1 ELSE 0 END) AS late_invoice_count
-        FROM invoices
-        """)
+        if city:
+            cursor.execute(
+                """
+                SELECT
+                    COALESCE(SUM(i.amount_due), 0) AS total_invoiced,
+                    COUNT(*) AS invoice_count,
+                    SUM(CASE WHEN i.status = 'PAID' THEN 1 ELSE 0 END) AS paid_invoice_count,
+                    SUM(CASE WHEN i.status = 'LATE' THEN 1 ELSE 0 END) AS late_invoice_count
+                FROM invoices i
+                JOIN leases l ON i.leaseID = l.leaseID
+                JOIN apartments a ON l.apartmentID = a.apartmentID
+                LEFT JOIN locations loc ON a.location_id = loc.location_id
+                WHERE loc.city = ?
+                """,
+                (city,),
+            )
+        else:
+            cursor.execute("""
+            SELECT
+                COALESCE(SUM(amount_due), 0) AS total_invoiced,
+                COUNT(*) AS invoice_count,
+                SUM(CASE WHEN status = 'PAID' THEN 1 ELSE 0 END) AS paid_invoice_count,
+                SUM(CASE WHEN status = 'LATE' THEN 1 ELSE 0 END) AS late_invoice_count
+            FROM invoices
+            """)
         invoice_row = cursor.fetchone()
 
-        cursor.execute("""
-        SELECT COALESCE(SUM(amount_paid), 0) AS total_collected
-        FROM payments
-        """)
-        payment_row = cursor.fetchone()
+        if payment_schema["amount_col"]:
+            if city and payment_schema["has_invoice_id"]:
+                cursor.execute(
+                    f"""
+                    SELECT COALESCE(SUM(p.{payment_schema["amount_col"]}), 0) AS total_collected
+                    FROM payments p
+                    JOIN invoices i ON p.invoiceID = i.invoiceID
+                    JOIN leases l ON i.leaseID = l.leaseID
+                    JOIN apartments a ON l.apartmentID = a.apartmentID
+                    LEFT JOIN locations loc ON a.location_id = loc.location_id
+                    WHERE loc.city = ?
+                    """,
+                    (city,),
+                )
+            elif city and payment_schema["has_tenant_apartment"]:
+                cursor.execute(
+                    f"""
+                    SELECT COALESCE(SUM(p.{payment_schema["amount_col"]}), 0) AS total_collected
+                    FROM payments p
+                    JOIN apartments a ON p.apartmentID = a.apartmentID
+                    LEFT JOIN locations loc ON a.location_id = loc.location_id
+                    WHERE loc.city = ?
+                    """,
+                    (city,),
+                )
+            else:
+                cursor.execute(f"""
+                SELECT COALESCE(SUM({payment_schema["amount_col"]}), 0) AS total_collected
+                FROM payments
+                """)
+            payment_row = cursor.fetchone()
+        else:
+            payment_row = {"total_collected": 0}
 
         conn.close()
 
@@ -65,29 +125,68 @@ class ReportDAO:
 
         conn = DBManager.get_connection()
         cursor = conn.cursor()
+        payment_schema = ReportDAO._payment_schema(cursor)
+        amount_col = payment_schema["amount_col"]
 
-        cursor.execute("""
-        SELECT
-            COALESCE(loc.city, 'Unknown') AS city,
-            COALESCE(SUM(i.amount_due), 0) AS total_invoiced,
-            COALESCE((
-                SELECT SUM(p.amount_paid)
-                FROM payments p
-                JOIN invoices i2 ON p.invoiceID = i2.invoiceID
-                JOIN leases l2 ON i2.leaseID = l2.leaseID
-                JOIN apartments a2 ON l2.apartmentID = a2.apartmentID
-                LEFT JOIN locations loc2 ON a2.location_id = loc2.location_id
-                WHERE COALESCE(loc2.city, 'Unknown') = COALESCE(loc.city, 'Unknown')
-            ), 0) AS total_collected,
-            COUNT(i.invoiceID) AS invoice_count,
-            SUM(CASE WHEN i.status = 'LATE' THEN 1 ELSE 0 END) AS late_invoice_count
-        FROM invoices i
-        JOIN leases l ON i.leaseID = l.leaseID
-        JOIN apartments a ON l.apartmentID = a.apartmentID
-        LEFT JOIN locations loc ON a.location_id = loc.location_id
-        GROUP BY COALESCE(loc.city, 'Unknown')
-        ORDER BY city
-        """)
+        if payment_schema["has_invoice_id"] and amount_col:
+            cursor.execute(f"""
+            SELECT
+                COALESCE(loc.city, 'Unknown') AS city,
+                COALESCE(SUM(i.amount_due), 0) AS total_invoiced,
+                COALESCE((
+                    SELECT SUM(p.{amount_col})
+                    FROM payments p
+                    JOIN invoices i2 ON p.invoiceID = i2.invoiceID
+                    JOIN leases l2 ON i2.leaseID = l2.leaseID
+                    JOIN apartments a2 ON l2.apartmentID = a2.apartmentID
+                    LEFT JOIN locations loc2 ON a2.location_id = loc2.location_id
+                    WHERE COALESCE(loc2.city, 'Unknown') = COALESCE(loc.city, 'Unknown')
+                ), 0) AS total_collected,
+                COUNT(i.invoiceID) AS invoice_count,
+                SUM(CASE WHEN i.status = 'LATE' THEN 1 ELSE 0 END) AS late_invoice_count
+            FROM invoices i
+            JOIN leases l ON i.leaseID = l.leaseID
+            JOIN apartments a ON l.apartmentID = a.apartmentID
+            LEFT JOIN locations loc ON a.location_id = loc.location_id
+            GROUP BY COALESCE(loc.city, 'Unknown')
+            ORDER BY city
+            """)
+        elif payment_schema["has_tenant_apartment"] and amount_col:
+            cursor.execute(f"""
+            SELECT
+                COALESCE(loc.city, 'Unknown') AS city,
+                COALESCE(SUM(i.amount_due), 0) AS total_invoiced,
+                COALESCE((
+                    SELECT SUM(p.{amount_col})
+                    FROM payments p
+                    LEFT JOIN apartments a2 ON p.apartmentID = a2.apartmentID
+                    LEFT JOIN locations loc2 ON a2.location_id = loc2.location_id
+                    WHERE COALESCE(loc2.city, 'Unknown') = COALESCE(loc.city, 'Unknown')
+                ), 0) AS total_collected,
+                COUNT(i.invoiceID) AS invoice_count,
+                SUM(CASE WHEN i.status = 'LATE' THEN 1 ELSE 0 END) AS late_invoice_count
+            FROM invoices i
+            JOIN leases l ON i.leaseID = l.leaseID
+            JOIN apartments a ON l.apartmentID = a.apartmentID
+            LEFT JOIN locations loc ON a.location_id = loc.location_id
+            GROUP BY COALESCE(loc.city, 'Unknown')
+            ORDER BY city
+            """)
+        else:
+            cursor.execute("""
+            SELECT
+                COALESCE(loc.city, 'Unknown') AS city,
+                COALESCE(SUM(i.amount_due), 0) AS total_invoiced,
+                0 AS total_collected,
+                COUNT(i.invoiceID) AS invoice_count,
+                SUM(CASE WHEN i.status = 'LATE' THEN 1 ELSE 0 END) AS late_invoice_count
+            FROM invoices i
+            JOIN leases l ON i.leaseID = l.leaseID
+            JOIN apartments a ON l.apartmentID = a.apartmentID
+            LEFT JOIN locations loc ON a.location_id = loc.location_id
+            GROUP BY COALESCE(loc.city, 'Unknown')
+            ORDER BY city
+            """)
 
         rows = cursor.fetchall()
         conn.close()
@@ -202,7 +301,7 @@ class ReportDAO:
     # LATE PAYMENT ALERTS
     # =========================
     @staticmethod
-    def get_late_invoices():
+    def get_late_invoices(city=None):
         """
         Return invoices currently marked as LATE with tenant and city info.
         Useful for alert examples and dashboard warnings.
@@ -211,8 +310,26 @@ class ReportDAO:
 
         conn = DBManager.get_connection()
         cursor = conn.cursor()
+        payment_schema = ReportDAO._payment_schema(cursor)
+        amount_col = payment_schema["amount_col"]
 
-        cursor.execute("""
+        if payment_schema["has_invoice_id"] and amount_col:
+            total_paid_expr = f"""COALESCE((
+                SELECT SUM(p.{amount_col})
+                FROM payments p
+                WHERE p.invoiceID = i.invoiceID
+            ), 0)"""
+        elif payment_schema["has_tenant_apartment"] and amount_col:
+            total_paid_expr = f"""COALESCE((
+                SELECT SUM(p.{amount_col})
+                FROM payments p
+                WHERE p.tenantID = l.tenantID
+                  AND p.apartmentID = l.apartmentID
+            ), 0)"""
+        else:
+            total_paid_expr = "0"
+
+        query = f"""
         SELECT
             i.invoiceID,
             i.leaseID,
@@ -224,19 +341,20 @@ class ReportDAO:
             i.due_date,
             i.amount_due,
             i.status,
-            COALESCE((
-                SELECT SUM(p.amount_paid)
-                FROM payments p
-                WHERE p.invoiceID = i.invoiceID
-            ), 0) AS total_paid
+            {total_paid_expr} AS total_paid
         FROM invoices i
         JOIN leases l ON i.leaseID = l.leaseID
         JOIN tenants t ON l.tenantID = t.tenantID
         JOIN apartments a ON l.apartmentID = a.apartmentID
         LEFT JOIN locations loc ON a.location_id = loc.location_id
         WHERE i.status = 'LATE'
-        ORDER BY i.due_date ASC, i.invoiceID DESC
-        """)
+        """
+        params = []
+        if city:
+            query += " AND loc.city = ?"
+            params.append(city)
+        query += " ORDER BY i.due_date ASC, i.invoiceID DESC"
+        cursor.execute(query, tuple(params))
 
         rows = cursor.fetchall()
         conn.close()
@@ -281,8 +399,20 @@ class ReportDAO:
 
         conn = DBManager.get_connection()
         cursor = conn.cursor()
+        payment_schema = ReportDAO._payment_schema(cursor)
+        amount_col = payment_schema["amount_col"]
 
-        cursor.execute("""
+        if payment_schema["has_invoice_id"] and amount_col:
+            join_clause = "LEFT JOIN payments p ON i.invoiceID = p.invoiceID"
+            total_paid_expr = f"COALESCE(SUM(p.{amount_col}), 0)"
+        elif payment_schema["has_tenant_apartment"] and amount_col:
+            join_clause = "LEFT JOIN payments p ON p.tenantID = l.tenantID AND p.apartmentID = l.apartmentID"
+            total_paid_expr = f"COALESCE(SUM(p.{amount_col}), 0)"
+        else:
+            join_clause = ""
+            total_paid_expr = "0"
+
+        cursor.execute(f"""
         SELECT
             i.invoiceID,
             i.leaseID,
@@ -292,9 +422,10 @@ class ReportDAO:
             i.amount_due,
             i.status,
             i.created_at,
-            COALESCE(SUM(p.amount_paid), 0) AS total_paid
+            {total_paid_expr} AS total_paid
         FROM invoices i
-        LEFT JOIN payments p ON i.invoiceID = p.invoiceID
+        JOIN leases l ON i.leaseID = l.leaseID
+        {join_clause}
         WHERE i.leaseID = ?
         GROUP BY
             i.invoiceID,
@@ -343,29 +474,57 @@ class ReportDAO:
         """
         conn = DBManager.get_connection()
         cursor = conn.cursor()
+        payment_schema = ReportDAO._payment_schema(cursor)
+        amount_col = payment_schema["amount_col"]
+        method_col = payment_schema["method_col"]
 
-        cursor.execute("""
-        SELECT
-            p.paymentID,
-            p.invoiceID,
-            i.leaseID,
-            t.name AS tenant_name,
-            a.type AS apartment_type,
-            COALESCE(loc.city, 'Unknown') AS city,
-            p.payment_date,
-            p.amount_paid,
-            p.payment_method,
-            p.receipt_number,
-            p.created_at
-        FROM payments p
-        JOIN invoices i ON p.invoiceID = i.invoiceID
-        JOIN leases l ON i.leaseID = l.leaseID
-        JOIN tenants t ON l.tenantID = t.tenantID
-        JOIN apartments a ON l.apartmentID = a.apartmentID
-        LEFT JOIN locations loc ON a.location_id = loc.location_id
-        WHERE COALESCE(loc.city, 'Unknown') = ?
-        ORDER BY p.payment_date DESC, p.paymentID DESC
-        """, (city,))
+        if payment_schema["has_invoice_id"] and amount_col and method_col:
+            cursor.execute(f"""
+            SELECT
+                p.paymentID,
+                p.invoiceID,
+                i.leaseID,
+                t.name AS tenant_name,
+                a.type AS apartment_type,
+                COALESCE(loc.city, 'Unknown') AS city,
+                p.payment_date,
+                p.{amount_col} AS amount_paid,
+                p.{method_col} AS payment_method,
+                p.receipt_number,
+                p.created_at
+            FROM payments p
+            JOIN invoices i ON p.invoiceID = i.invoiceID
+            JOIN leases l ON i.leaseID = l.leaseID
+            JOIN tenants t ON l.tenantID = t.tenantID
+            JOIN apartments a ON l.apartmentID = a.apartmentID
+            LEFT JOIN locations loc ON a.location_id = loc.location_id
+            WHERE COALESCE(loc.city, 'Unknown') = ?
+            ORDER BY p.payment_date DESC, p.paymentID DESC
+            """, (city,))
+        elif payment_schema["has_tenant_apartment"] and amount_col and method_col:
+            cursor.execute(f"""
+            SELECT
+                p.paymentID,
+                NULL AS invoiceID,
+                NULL AS leaseID,
+                t.name AS tenant_name,
+                a.type AS apartment_type,
+                COALESCE(loc.city, 'Unknown') AS city,
+                p.payment_date,
+                p.{amount_col} AS amount_paid,
+                p.{method_col} AS payment_method,
+                NULL AS receipt_number,
+                NULL AS created_at
+            FROM payments p
+            LEFT JOIN tenants t ON p.tenantID = t.tenantID
+            LEFT JOIN apartments a ON p.apartmentID = a.apartmentID
+            LEFT JOIN locations loc ON a.location_id = loc.location_id
+            WHERE COALESCE(loc.city, 'Unknown') = ?
+            ORDER BY p.payment_date DESC, p.paymentID DESC
+            """, (city,))
+        else:
+            conn.close()
+            return []
 
         rows = cursor.fetchall()
         conn.close()

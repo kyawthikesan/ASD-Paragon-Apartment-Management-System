@@ -35,5 +35,5 @@ class LeaseController:
         return "Success"
 
     @staticmethod
-    def get_all_leases():
-        return LeaseDAO.get_all_leases()
+    def get_all_leases(city=None):
+        return LeaseDAO.get_all_leases(city=city)

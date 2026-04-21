@@ -144,7 +144,7 @@ class LoginView(tk.Frame):
         self.right_backdrop.place(relx=0, rely=0, relwidth=1, relheight=1)
         self.right_backdrop.bind("<Configure>", self._draw_right_backdrop)
 
-        shadow = tk.Frame(parent, bg="#0E0C0A")
+        shadow = tk.Frame(parent, bg="#D7C8B3")
         shadow.place(relx=0.5, rely=0.5, anchor="center", width=532, height=572)
 
         shell = tk.Frame(parent, bg=BG_MAIN)
@@ -154,7 +154,7 @@ class LoginView(tk.Frame):
             shell,
             bg=BG_MAIN,
             highlightthickness=1,
-            highlightbackground="#2A2520",
+            highlightbackground="#D8CDBD",
         )
         panel.pack(fill="both", expand=True)
 
@@ -317,7 +317,7 @@ class LoginView(tk.Frame):
             -height * 0.20,
             width * 0.35,
             height * 0.55,
-            outline="#2A2520",
+            outline="#E2D7C9",
             width=1,
         )
         canvas.create_oval(
@@ -325,7 +325,7 @@ class LoginView(tk.Frame):
             height * 0.35,
             width * 1.25,
             height * 1.20,
-            outline="#24201C",
+            outline="#E9DECF",
             width=1,
         )
         canvas.create_line(
@@ -333,7 +333,7 @@ class LoginView(tk.Frame):
             0,
             width * 0.18,
             height,
-            fill="#201C18",
+            fill="#E3D8CA",
             width=1,
         )
 

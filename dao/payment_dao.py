@@ -5,6 +5,11 @@ from dao.invoice_dao import InvoiceDAO
 
 
 class PaymentDAO:
+    @staticmethod
+    def _table_columns(cursor, table_name):
+        cursor.execute(f"PRAGMA table_info({table_name})")
+        return {row["name"] for row in cursor.fetchall()}
+
     # =========================
     # GENERATE RECEIPT NUMBER
     # =========================
@@ -57,11 +62,85 @@ class PaymentDAO:
 
         return payment_id
 
+    @staticmethod
+    def add_payment(tenantID, apartmentID, amount, payment_date, method="MANUAL", status="Pending", note=None):
+        """
+        Insert a payment using the active DB schema.
+        Supports both:
+        - modern schema (tenantID/apartmentID/amount/method/status/note)
+        - legacy invoice schema (requires invoice flow; not used by current controller tests)
+        """
+        conn = DBManager.get_connection()
+        cursor = conn.cursor()
+        payment_columns = PaymentDAO._table_columns(cursor, "payments")
+
+        if {"tenantID", "apartmentID"}.issubset(payment_columns):
+            columns = ["tenantID", "apartmentID", "payment_date"]
+            values = [tenantID, apartmentID, payment_date]
+
+            if "amount" in payment_columns:
+                columns.append("amount")
+            else:
+                columns.append("amount_paid")
+            values.append(amount)
+
+            if "method" in payment_columns:
+                columns.append("method")
+            else:
+                columns.append("payment_method")
+            values.append(method)
+
+            if "status" in payment_columns:
+                columns.append("status")
+                values.append(status)
+
+            if "note" in payment_columns:
+                columns.append("note")
+                values.append(note)
+
+            placeholders = ", ".join(["?"] * len(values))
+            column_sql = ", ".join(columns)
+
+            cursor.execute(
+                f"INSERT INTO payments ({column_sql}) VALUES ({placeholders})",
+                tuple(values),
+            )
+            conn.commit()
+            payment_id = cursor.lastrowid
+            conn.close()
+            return payment_id
+
+        conn.close()
+        raise ValueError("payments table does not support tenant/apartment payment inserts")
+
+    @staticmethod
+    def update_payment_status(payment_id, status):
+        conn = DBManager.get_connection()
+        cursor = conn.cursor()
+        payment_columns = PaymentDAO._table_columns(cursor, "payments")
+
+        if "status" not in payment_columns:
+            conn.close()
+            return False
+
+        cursor.execute(
+            """
+            UPDATE payments
+            SET status = ?
+            WHERE paymentID = ?
+            """,
+            (status, payment_id),
+        )
+        conn.commit()
+        updated = cursor.rowcount > 0
+        conn.close()
+        return updated
+
     # =========================
     # GET ALL PAYMENTS
     # =========================
     @staticmethod
-    def get_all_payments():
+    def get_all_payments(city=None):
         """
         Return all payments with joined invoice, tenant, apartment, and city info.
         Useful for finance dashboards and payment history screens.
@@ -69,27 +148,70 @@ class PaymentDAO:
         conn = DBManager.get_connection()
         cursor = conn.cursor()
 
-        cursor.execute("""
-        SELECT
-            p.paymentID,
-            p.invoiceID,
-            i.leaseID,
-            t.name AS tenant_name,
-            a.type AS apartment_type,
-            loc.city,
-            p.payment_date,
-            p.amount_paid,
-            p.payment_method,
-            p.receipt_number,
-            p.created_at
-        FROM payments p
-        JOIN invoices i ON p.invoiceID = i.invoiceID
-        JOIN leases l ON i.leaseID = l.leaseID
-        JOIN tenants t ON l.tenantID = t.tenantID
-        JOIN apartments a ON l.apartmentID = a.apartmentID
-        LEFT JOIN locations loc ON a.location_id = loc.location_id
-        ORDER BY p.paymentID DESC
-        """)
+        payment_columns = PaymentDAO._table_columns(cursor, "payments")
+
+        # Legacy schema: payments are linked through invoices.
+        if "invoiceID" in payment_columns:
+            query = """
+            SELECT
+                p.paymentID,
+                p.invoiceID,
+                i.leaseID,
+                t.name AS tenant_name,
+                a.type AS apartment_type,
+                loc.city,
+                p.payment_date,
+                p.amount_paid,
+                p.payment_method,
+                p.receipt_number,
+                p.created_at
+            FROM payments p
+            JOIN invoices i ON p.invoiceID = i.invoiceID
+            JOIN leases l ON i.leaseID = l.leaseID
+            JOIN tenants t ON l.tenantID = t.tenantID
+            JOIN apartments a ON l.apartmentID = a.apartmentID
+            LEFT JOIN locations loc ON a.location_id = loc.location_id
+            """
+            params = []
+            if city:
+                query += " WHERE loc.city = ?"
+                params.append(city)
+            query += " ORDER BY p.paymentID DESC"
+            cursor.execute(query, tuple(params))
+        else:
+            amount_col = "amount" if "amount" in payment_columns else "amount_paid"
+            method_col = "method" if "method" in payment_columns else "payment_method"
+            status_expr = "p.status" if "status" in payment_columns else "NULL"
+            note_expr = "p.note" if "note" in payment_columns else "NULL"
+
+            query = f"""
+            SELECT
+                p.paymentID,
+                NULL AS invoiceID,
+                NULL AS leaseID,
+                p.tenantID,
+                p.apartmentID,
+                t.name AS tenant_name,
+                a.type AS apartment_type,
+                loc.city,
+                p.payment_date,
+                p.{amount_col} AS amount_paid,
+                p.{method_col} AS payment_method,
+                {status_expr} AS status,
+                {note_expr} AS note,
+                NULL AS receipt_number,
+                NULL AS created_at
+            FROM payments p
+            LEFT JOIN tenants t ON p.tenantID = t.tenantID
+            LEFT JOIN apartments a ON p.apartmentID = a.apartmentID
+            LEFT JOIN locations loc ON a.location_id = loc.location_id
+            """
+            params = []
+            if city:
+                query += " WHERE loc.city = ?"
+                params.append(city)
+            query += " ORDER BY p.paymentID DESC"
+            cursor.execute(query, tuple(params))
 
         rows = cursor.fetchall()
         conn.close()

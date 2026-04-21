@@ -31,7 +31,7 @@ class LeaseDAO:
     # GET ALL LEASES (UI LIST)
     # =========================
     @staticmethod
-    def get_all_leases():
+    def get_all_leases(city=None):
         conn = DBManager.get_connection()
         conn.row_factory = lambda cursor, row: {
             "leaseID": row[0],
@@ -42,14 +42,19 @@ class LeaseDAO:
             "status": row[5]
         }
         cursor = conn.cursor()
-
-        cursor.execute("""
+        query = """
         SELECT l.leaseID, t.name, a.type, l.start_date, l.end_date, l.status
         FROM leases l
         JOIN tenants t ON l.tenantID = t.tenantID
         JOIN apartments a ON l.apartmentID = a.apartmentID
-        ORDER BY l.leaseID DESC
-        """)
+        LEFT JOIN locations loc ON a.location_id = loc.location_id
+        """
+        params = []
+        if city:
+            query += " WHERE loc.city = ?"
+            params.append(city)
+        query += " ORDER BY l.leaseID DESC"
+        cursor.execute(query, tuple(params))
 
         rows = cursor.fetchall()
         conn.close()
@@ -59,11 +64,10 @@ class LeaseDAO:
     # GET ALL LEASES WITH FINANCIAL DETAILS
     # =========================
     @staticmethod
-    def get_all_leases_with_financial_details():
+    def get_all_leases_with_financial_details(city=None):
         conn = DBManager.get_connection()
         cursor = conn.cursor()
-
-        cursor.execute("""
+        query = """
         SELECT
             l.leaseID,
             l.tenantID,
@@ -79,8 +83,13 @@ class LeaseDAO:
         JOIN tenants t ON l.tenantID = t.tenantID
         JOIN apartments a ON l.apartmentID = a.apartmentID
         LEFT JOIN locations loc ON a.location_id = loc.location_id
-        ORDER BY l.leaseID DESC
-        """)
+        """
+        params = []
+        if city:
+            query += " WHERE loc.city = ?"
+            params.append(city)
+        query += " ORDER BY l.leaseID DESC"
+        cursor.execute(query, tuple(params))
 
         rows = cursor.fetchall()
         conn.close()

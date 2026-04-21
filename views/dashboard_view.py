@@ -1,7 +1,6 @@
 import os
 from datetime import date, datetime
 import tkinter as tk
-from dao.report_dao import ReportDAO
 
 import customtkinter as ctk
 
@@ -16,7 +15,9 @@ from controllers.lease_controller import LeaseController
 from controllers.maintenance_controller import MaintenanceController
 from controllers.payment_controller import PaymentController
 from dao.apartment_dao import ApartmentDAO
+from dao.location_dao import LocationDAO
 from dao.tenant_dao import TenantDAO
+from dao.report_dao import ReportDAO
 from views.premium_shell import PremiumAppShell
 
 
@@ -30,6 +31,8 @@ class DashboardView(tk.Frame):
         open_apartment_management,
         open_lease_management,
         open_finance_dashboard,
+        open_finance_payments=None,
+        open_finance_reports=None,
     ):
         super().__init__(parent, bg="#FAF7F2")
         self.pack(fill="both", expand=True)
@@ -38,10 +41,15 @@ class DashboardView(tk.Frame):
         self.role = self._row_value(self.current_user, "role_name", "")
         self.full_name = self._row_value(self.current_user, "full_name", "User")
         self.location = self._row_value(self.current_user, "location", "All Cities")
-        self.occupancy_filter = "All Cities"
+        self.is_admin = AuthController.is_admin(self.role)
+        self.occupancy_filter = "All Cities" if self.is_admin else (self.location or "All Cities")
+        self.city_scope = AuthController.get_city_scope(self.occupancy_filter)
 
         self.open_lease_management = open_lease_management
+        self._open_tenant_management_callback = open_tenant_management
         self.open_finance_dashboard = open_finance_dashboard
+        self.open_finance_payments = open_finance_payments or open_finance_dashboard
+        self.open_finance_reports = open_finance_reports or open_finance_dashboard
 
         self._load_dashboard_data()
 
@@ -72,16 +80,23 @@ class DashboardView(tk.Frame):
                 {"label": "Leases", "action": open_lease_management, "icon": "leases"}
             )
 
-        if (AuthController.can_access_feature("payment_management", self.role)
-            or AuthController.can_access_feature("reports", self.role)
-        ):
+        if AuthController.can_access_feature("finance_dashboard", self.role):
             nav_sections[2]["items"].append(
-                {"label": "Payments & Reports", "action": open_finance_dashboard, "icon": "payments"}
+                {
+                    "label": "Payments",
+                    "action": self.open_finance_payments,
+                    "icon": "payments",
+                }
             )
-            
+            nav_sections[2]["items"].append(
+                {
+                    "label": "Reports",
+                    "action": self.open_finance_reports,
+                    "icon": "reports",
+                }
+            )
 
-        # Keep User Access visible in sidebar for consistent navigation;
-        # guard logic still controls access.
+        # Keep User Access visible for consistent sidebar layout.
         nav_sections[3]["items"].append(
             {
                 "label": "User Access",
@@ -104,11 +119,17 @@ class DashboardView(tk.Frame):
             on_settings_click=self._show_settings,
             notification_count=self.attention_count,
         )
+        self.shell.pack(fill="both", expand=True)
 
-        content = self.shell.content
-        self._build_banner(content, open_tenant_management)
-        self._build_stats(content)
-        self._build_main_panels(content)
+        self.content = self.shell.content
+        self._render_dashboard_content(open_tenant_management)
+
+    def _render_dashboard_content(self, open_tenant_management):
+        for widget in self.content.winfo_children():
+            widget.destroy()
+        self._build_banner(self.content, open_tenant_management)
+        self._build_stats(self.content)
+        self._build_main_panels(self.content)
 
     @staticmethod
     def _row_value(row, key, default=""):
@@ -148,11 +169,12 @@ class DashboardView(tk.Frame):
             return False
 
     def _load_dashboard_data(self):
-        self.apartments = ApartmentDAO.get_all_apartments()
+        self.city_scope = AuthController.get_city_scope(self.occupancy_filter)
+        self.apartments = ApartmentDAO.get_all_apartments(city=self.city_scope)
         self.tenants = TenantDAO.get_all_tenants()
-        self.leases = LeaseController.get_all_leases()
-        self.requests = MaintenanceController.get_all_requests()
-        self.payments = PaymentController.get_all_payments()
+        self.leases = LeaseController.get_all_leases(city=self.city_scope)
+        self.requests = MaintenanceController.get_all_requests(city=self.city_scope)
+        self.payments = PaymentController.get_all_payments(city=self.city_scope)
 
         self.open_requests = [
             r for r in self.requests
@@ -164,8 +186,8 @@ class DashboardView(tk.Frame):
             if str(self._row_value(r, "priority", "")).strip().lower() in {"high", "urgent"}
         ]
 
-        # Use finance report data for overdue/late invoices instead of payment rows
-        self.overdue_payments = ReportDAO.get_late_invoices()
+        # Better overdue source for finance dashboard.
+        self.overdue_payments = ReportDAO.get_late_invoices(city=self.city_scope)
 
         self.expiring_leases = [
             l for l in self.leases
@@ -185,7 +207,16 @@ class DashboardView(tk.Frame):
             if city:
                 city_totals[city] = city_totals.get(city, 0) + 1
 
-        self.occupancy_options = ["All Cities"] + sorted(city_totals.keys())
+        if self.is_admin:
+            locations = LocationDAO.get_all_locations()
+            cities = sorted({str(loc["city"]).strip() for loc in locations if str(loc["city"]).strip()})
+            self.occupancy_options = ["All Cities"] + cities
+            if self.occupancy_filter not in self.occupancy_options:
+                self.occupancy_filter = "All Cities"
+        else:
+            self.occupancy_options = [self.location] if self.location else sorted(city_totals.keys())
+            if self.occupancy_options:
+                self.occupancy_filter = self.occupancy_options[0]
 
     def _build_banner(self, parent, open_tenant_management):
         banner = ctk.CTkFrame(
@@ -194,7 +225,7 @@ class DashboardView(tk.Frame):
             corner_radius=18,
             border_width=1,
             border_color="#312817",
-            height=110
+            height=110,
         )
         banner.pack(fill="x", pady=(0, 14))
         banner.pack_propagate(False)
@@ -239,7 +270,7 @@ class DashboardView(tk.Frame):
         for col in range(4):
             stats_wrap.grid_columnconfigure(col, weight=1)
 
-        summary = ReportDAO.get_overall_financial_summary()
+        summary = ReportDAO.get_overall_financial_summary(city=self.city_scope)
         paid_total = float(summary["total_collected"] or 0)
 
         occupied = len([
@@ -297,7 +328,7 @@ class DashboardView(tk.Frame):
                 fg_color="#F1E6D3",
                 corner_radius=12,
                 width=48,
-                height=48
+                height=48,
             )
             icon_box.pack(side="left")
             icon_box.pack_propagate(False)
@@ -309,7 +340,7 @@ class DashboardView(tk.Frame):
                     image=stat_icon,
                     bg="#F1E6D3",
                     bd=0,
-                    highlightthickness=0
+                    highlightthickness=0,
                 )
                 icon_label.image = stat_icon
                 icon_label.pack(expand=True)
@@ -360,7 +391,7 @@ class DashboardView(tk.Frame):
             main,
             fg_color="#FFFFFF",
             corner_radius=20,
-            border_width=0
+            border_width=0,
         )
         lease_panel.grid(row=0, column=0, sticky="nsew", padx=(0, 8), pady=0)
         self._panel_header(
@@ -381,7 +412,7 @@ class DashboardView(tk.Frame):
             right_stack,
             fg_color="#FFFFFF",
             corner_radius=20,
-            border_width=0
+            border_width=0,
         )
         occupancy_panel.grid(row=0, column=0, sticky="nsew", pady=(0, 8))
         self._panel_header(occupancy_panel, "Occupancy by City", show_occupancy_menu=True)
@@ -392,13 +423,20 @@ class DashboardView(tk.Frame):
             right_stack,
             fg_color="#FFFFFF",
             corner_radius=20,
-            border_width=0
+            border_width=0,
         )
         activity_panel.grid(row=1, column=0, sticky="nsew")
         self._panel_header(activity_panel, "Recent Activity", action_text="View log")
         self._build_activity(activity_panel)
 
-    def _panel_header(self, parent, title, action_text=None, action_callback=None, show_occupancy_menu=False):
+    def _panel_header(
+        self,
+        parent,
+        title,
+        action_text=None,
+        action_callback=None,
+        show_occupancy_menu=False,
+    ):
         header = ctk.CTkFrame(parent, fg_color="transparent", corner_radius=0, height=44)
         header.pack(fill="x", padx=0, pady=(0, 0))
         header.pack_propagate(False)
@@ -408,7 +446,7 @@ class DashboardView(tk.Frame):
             text=title,
             text_color="#2C2416",
             font=("Arial", 16, "bold"),
-            anchor="w"
+            anchor="w",
         ).pack(side="left", padx=16)
 
         if show_occupancy_menu:
@@ -447,7 +485,7 @@ class DashboardView(tk.Frame):
             parent,
             fg_color="#EFE4D0",
             corner_radius=0,
-            height=1
+            height=1,
         ).pack(fill="x", padx=16, pady=0)
 
     def _build_lease_table(self, parent):
@@ -495,9 +533,14 @@ class DashboardView(tk.Frame):
             unit = self._row_value(lease, "apartment", "-")
             lease_end = self._format_month_year(self._row_value(lease, "end_date", ""))
             status = self._row_value(lease, "status", "")
-            NI_number = self._get_tenant_ni(lease)
+            ni_number = self._get_tenant_ni(lease)
 
-            row = ctk.CTkFrame(self.lease_rows_container, fg_color="#FFFFFF", corner_radius=0, height=74)
+            row = ctk.CTkFrame(
+                self.lease_rows_container,
+                fg_color="#FFFFFF",
+                corner_radius=0,
+                height=74,
+            )
             row.pack(fill="x", pady=(4, 0))
             row.pack_propagate(False)
 
@@ -519,7 +562,7 @@ class DashboardView(tk.Frame):
 
             ctk.CTkLabel(
                 tenant_col,
-                text=f"NI: {NI_number}",
+                text=f"NI: {ni_number}",
                 text_color="#9E8F77",
                 font=("Arial", 11),
                 anchor="w",
@@ -557,7 +600,7 @@ class DashboardView(tk.Frame):
                 self.lease_rows_container,
                 fg_color="#F1EADF",
                 corner_radius=0,
-                height=1
+                height=1,
             ).pack(fill="x", pady=(4, 2))
 
     @staticmethod
@@ -594,7 +637,7 @@ class DashboardView(tk.Frame):
                 self._row_value(
                     tenant,
                     "name",
-                    self._row_value(tenant, "full_name", "")
+                    self._row_value(tenant, "full_name", ""),
                 )
             ).strip().lower()
 
@@ -602,7 +645,7 @@ class DashboardView(tk.Frame):
                 self._row_value(
                     tenant,
                     "tenantID",
-                    self._row_value(tenant, "id", "")
+                    self._row_value(tenant, "id", ""),
                 )
             ).strip()
 
@@ -614,8 +657,8 @@ class DashboardView(tk.Frame):
                         self._row_value(
                             tenant,
                             "NI",
-                            self._row_value(tenant, "national_insurance_number", "N/A")
-                        )
+                            self._row_value(tenant, "national_insurance_number", "N/A"),
+                        ),
                     )
                 ).strip().upper()
 
@@ -627,8 +670,8 @@ class DashboardView(tk.Frame):
                         self._row_value(
                             tenant,
                             "NI",
-                            self._row_value(tenant, "national_insurance_number", "N/A")
-                        )
+                            self._row_value(tenant, "national_insurance_number", "N/A"),
+                        ),
                     )
                 ).strip().upper()
 
@@ -651,8 +694,12 @@ class DashboardView(tk.Frame):
 
     def _on_occupancy_selected(self, selected_value):
         self.occupancy_filter = selected_value
-        self._build_occupancy(self._occupancy_parent)
-        
+        if self.is_admin:
+            self._load_dashboard_data()
+            self._render_dashboard_content(self._open_tenant_management_callback)
+        else:
+            self._build_occupancy(self._occupancy_parent)
+
     def _build_occupancy(self, parent):
         if hasattr(self, "_occupancy_body") and self._occupancy_body.winfo_exists():
             self._occupancy_body.destroy()
@@ -765,16 +812,21 @@ class DashboardView(tk.Frame):
         body.pack(fill="both", expand=True, padx=12, pady=10)
 
         activity_rows = []
+
         for payment in self.payments[:4]:
             payment_date = self._row_value(payment, "payment_date", "")
             stamp = self._format_activity_date(payment_date)
 
-            tenant_name = self._row_value(payment, "tenant_name", f"Tenant #{self._row_value(payment, 'tenantID', '-')}")
+            tenant_name = self._row_value(
+                payment,
+                "tenant_name",
+                f"Tenant #{self._row_value(payment, 'tenantID', '-')}",
+            )
             amount_paid = float(
                 self._row_value(
                     payment,
                     "amount_paid",
-                    self._row_value(payment, "amount", 0)
+                    self._row_value(payment, "amount", 0),
                 ) or 0
             )
             payment_method = self._row_value(payment, "payment_method", "Manual")
@@ -812,6 +864,7 @@ class DashboardView(tk.Frame):
 
             left = ctk.CTkFrame(row, fg_color="#FFFFFF", corner_radius=0)
             left.pack(side="left", fill="x", expand=True)
+
             ctk.CTkLabel(
                 left,
                 text=item["title"],
@@ -819,6 +872,7 @@ class DashboardView(tk.Frame):
                 font=("Arial", 13, "bold"),
                 anchor="w",
             ).pack(fill="x")
+
             ctk.CTkLabel(
                 left,
                 text=item["subtitle"],
@@ -834,7 +888,13 @@ class DashboardView(tk.Frame):
                 font=("Arial", 11),
                 anchor="e",
             ).pack(side="right", padx=(8, 0))
-            ctk.CTkFrame(body, fg_color="#F1EADF", corner_radius=0, height=1).pack(fill="x", pady=(2, 6))
+
+            ctk.CTkFrame(
+                body,
+                fg_color="#F1EADF",
+                corner_radius=0,
+                height=1,
+            ).pack(fill="x", pady=(2, 6))
 
     @staticmethod
     def _format_activity_date(raw_date):
@@ -850,10 +910,11 @@ class DashboardView(tk.Frame):
             icon_text="🔔",
             icon_fg="#B8891F",
             icon_bg="#F6E8B8",
+            highlight_nonzero=True,
             rows=[
-                ("High-priority maintenance", len(self.high_priority_requests)),
-                ("Overdue payments", len(self.overdue_payments)),
-                ("Leases expiring in 30 days", len(self.expiring_leases)),
+                ("High-priority maintenance", str(len(self.high_priority_requests))),
+                ("Overdue payments", str(len(self.overdue_payments))),
+                ("Leases expiring in 30 days", str(len(self.expiring_leases))),
             ],
         )
 

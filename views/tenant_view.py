@@ -1,37 +1,49 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
 from controllers.tenant_controller import TenantController
+from controllers.auth_controller import AuthController
+from views.premium_shell import PremiumAppShell
 
 
 class TenantView(tk.Frame):
 
     def __init__(self, parent, back_callback):
-        super().__init__(parent)
+        super().__init__(parent, bg="#F9F5EE")
         self.pack(fill="both", expand=True)
+        self.city_scope = AuthController.get_city_scope()
+        role = AuthController.get_current_role()
+        nav_sections = [
+            {"title": "Overview", "items": [{"label": "Dashboard", "action": back_callback, "icon": "⌂"}]},
+            {
+                "title": "Management",
+                "items": [
+                    {"label": "Tenants", "action": lambda: None, "icon": "👤", "badge": None},
+                ],
+            },
+        ]
+        if AuthController.can_access_feature("apartment_management", role):
+            nav_sections[1]["items"].append({"label": "Apartments", "action": back_callback, "icon": "▦"})
+        if AuthController.can_access_feature("lease_management", role):
+            nav_sections[1]["items"].append({"label": "Leases", "action": back_callback, "icon": "📄"})
 
-        # ======================
-        # MAIN CONTAINER
-        # ======================
-        main_frame = ttk.Frame(self, padding=20)
-        main_frame.pack(fill="both", expand=True)
+        shell = PremiumAppShell(
+            self,
+            page_title="Tenant Management",
+            on_logout=back_callback,
+            active_nav="Tenants",
+            nav_sections=nav_sections,
+            footer_action_label="Back to Dashboard",
+            search_placeholder="Search tenants...",
+        )
+        content = shell.content
 
-        # Top bar
-        top_frame = ttk.Frame(main_frame)
-        top_frame.pack(fill="x")
+        summary = tk.Frame(content, bg="#FFFFFF", highlightthickness=1, highlightbackground="#E4D8C6", padx=14, pady=10)
+        summary.pack(fill="x", pady=(0, 10))
+        tk.Label(summary, text="Register New Tenant", bg="#FFFFFF", fg="#2F2A23", font=("Segoe UI", 14, "bold")).pack(anchor="w")
+        tk.Label(summary, text="Add and manage tenant details for current office", bg="#FFFFFF", fg="#7A6F61", font=("Segoe UI", 10)).pack(anchor="w", pady=(2, 0))
 
-        ttk.Button(top_frame, text="← Back", command=back_callback).pack(side="left")
-
-        ttk.Label(
-            top_frame,
-            text="Tenant Management",
-            font=("Arial", 16, "bold")
-        ).pack(side="left", padx=20)
-
-        # ======================
-        # FORM SECTION
-        # ======================
-        form_frame = ttk.LabelFrame(main_frame, text="Tenant Details", padding=15)
-        form_frame.pack(fill="x", pady=10)
+        form_frame = ttk.LabelFrame(content, text="Tenant Details", padding=15)
+        form_frame.pack(fill="x", pady=(0, 10))
 
         # Name
         ttk.Label(form_frame, text="Name").grid(row=0, column=0, padx=10, pady=5, sticky="w")
@@ -68,10 +80,7 @@ class TenantView(tk.Frame):
         self.delete_btn.grid(row=0, column=2, padx=5)
 
 
-        # ======================
-        # TABLE SECTION
-        # ======================
-        table_frame = ttk.LabelFrame(main_frame, text="Tenant List", padding=10)
+        table_frame = ttk.LabelFrame(content, text="Tenant List", padding=10)
         table_frame.pack(fill="both", expand=True, pady=10)
 
         # 🔍 SEARCH BAR
@@ -97,7 +106,7 @@ class TenantView(tk.Frame):
 
         for col in columns:
             self.table.heading(col, text=col)
-            self.table.column(col, width=120, anchor="center")
+            self.table.column(col, width=140, anchor="center", stretch=True)
             self.table.tag_configure("odd", background="#f9f9f9")
             self.table.tag_configure("even", background="#ffffff")
             self.table.tag_configure("active", foreground="green")
@@ -125,7 +134,7 @@ class TenantView(tk.Frame):
         for row in self.table.get_children():
             self.table.delete(row)
 
-        tenants = TenantController.get_all_tenants()
+        tenants = TenantController.get_all_tenants(city=self.city_scope)
 
         for i, tenant in enumerate(tenants):
             self.insert_tenant_row(tenant, i)
@@ -234,8 +243,18 @@ class TenantView(tk.Frame):
 
     def search_tenant(self):
         keyword = self.search_entry.get()
-
-        tenants = TenantController.search_tenant(keyword)
+        if hasattr(TenantController, "search_tenant"):
+            tenants = TenantController.search_tenant(keyword)
+        else:
+            # Fallback keeps the search button usable even if the controller lacks helper.
+            keyword_l = keyword.strip().lower()
+            tenants = [
+                row for row in TenantController.get_all_tenants(city=self.city_scope)
+                if keyword_l in str(row["name"]).lower()
+                or keyword_l in str(row["NI_number"]).lower()
+                or keyword_l in str(row["phone"]).lower()
+                or keyword_l in str(row["email"]).lower()
+            ]
 
         for row in self.table.get_children():
             self.table.delete(row)

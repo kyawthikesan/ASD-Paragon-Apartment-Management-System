@@ -59,6 +59,7 @@ class PremiumAppShell(ctk.CTkFrame):
         user = AuthController.current_user
         self._full_name = self._read_user_value(user, "full_name", "Unknown User")
         role_name = self._read_user_value(user, "role_name", "staff")
+        self._role_key = str(role_name).strip().lower()
         self._role_name = str(role_name).replace("_", " ").title()
         self._display_name = " ".join(str(self._full_name).split()).title() or "Unknown User"
 
@@ -115,7 +116,7 @@ class PremiumAppShell(ctk.CTkFrame):
         self._build_topbar(body, page_title)
 
         self.content = ctk.CTkFrame(body, fg_color=self.BODY_BG, corner_radius=0)
-        self.content.grid(row=1, column=0, sticky="nsew", padx=22, pady=(12, 16))
+        self.content.grid(row=1, column=0, sticky="nsew", padx=22, pady=(8, 16))
         self.content.grid_columnconfigure(0, weight=1)
 
     def _build_sidebar(self, sidebar, on_logout, active_nav, nav_sections, footer_action_label):
@@ -135,14 +136,23 @@ class PremiumAppShell(ctk.CTkFrame):
         top.grid(row=0, column=0, sticky="ew", padx=18, pady=(24, 12))
         self._render_brand(top)
 
-        # ---------------- Location ----------------
-        location_box = ctk.CTkFrame(sidebar, fg_color=self.SIDEBAR_BG, corner_radius=0)
-        location_box.grid(row=1, column=0, sticky="ew", padx=18, pady=(8, 18))
-        self._render_location_row(location_box)
+        # ---------------- Location (hidden for admin to save vertical space) ----------------
+        if self._role_key != "admin":
+            location_box = ctk.CTkFrame(sidebar, fg_color=self.SIDEBAR_BG, corner_radius=0)
+            location_box.grid(row=1, column=0, sticky="ew", padx=18, pady=(8, 18))
+            self._render_location_row(location_box)
 
         # ---------------- Navigation ----------------
         nav_wrap = ctk.CTkFrame(sidebar, fg_color=self.SIDEBAR_BG, corner_radius=0)
         nav_wrap.grid(row=2, column=0, sticky="nsew", padx=10, pady=(4, 0))
+        nav_wrap.grid_columnconfigure(0, weight=1)
+
+        nav_content = ctk.CTkFrame(
+            nav_wrap,
+            fg_color=self.SIDEBAR_BG,
+            corner_radius=0,
+        )
+        nav_content.grid(row=0, column=0, sticky="nsew")
 
         for section in nav_sections:
             title = section.get("title", "").upper()
@@ -150,7 +160,7 @@ class PremiumAppShell(ctk.CTkFrame):
 
             if title:
                 ctk.CTkLabel(
-                    nav_wrap,
+                    nav_content,
                     text=title,
                     text_color="#8F7F63",
                     font=("Arial", 11, "bold"),
@@ -171,7 +181,7 @@ class PremiumAppShell(ctk.CTkFrame):
                 is_active = label == active_nav
 
                 row = ctk.CTkFrame(
-                    nav_wrap,
+                    nav_content,
                     fg_color=self.ACTIVE_BG if is_active else "transparent",
                     corner_radius=14 if is_active else 0,
                     height=40,
@@ -305,8 +315,8 @@ class PremiumAppShell(ctk.CTkFrame):
             logout_btn.configure(text=f"  ↪  {footer_action_label}")
 
     def _build_topbar(self, body, page_title):
-        topbar = ctk.CTkFrame(body, fg_color=self.BODY_BG, corner_radius=0, height=92)
-        topbar.grid(row=0, column=0, sticky="ew", padx=0, pady=(14, 0))
+        topbar = ctk.CTkFrame(body, fg_color=self.BODY_BG, corner_radius=0, height=72)
+        topbar.grid(row=0, column=0, sticky="ew", padx=0, pady=(8, 0))
         topbar.grid_columnconfigure(0, weight=1)
         topbar.grid_columnconfigure(1, weight=1)
         topbar.grid_propagate(False)
@@ -315,13 +325,13 @@ class PremiumAppShell(ctk.CTkFrame):
             topbar,
             text=page_title,
             text_color=self.TEXT_DARK,
-            font=("Georgia", 28, "bold"),
-            height=36,
+            font=("Georgia", 24, "bold"),
+            height=30,
             anchor="w",
-        ).grid(row=0, column=0, sticky="w", padx=22, pady=(20, 10))
+        ).grid(row=0, column=0, sticky="w", padx=22, pady=(12, 8))
 
         right = ctk.CTkFrame(topbar, fg_color=self.BODY_BG, corner_radius=0)
-        right.grid(row=0, column=1, sticky="e", padx=18, pady=(18, 6))
+        right.grid(row=0, column=1, sticky="e", padx=18, pady=(10, 4))
 
         search_wrap = ctk.CTkFrame(
             right,
@@ -331,7 +341,7 @@ class PremiumAppShell(ctk.CTkFrame):
             border_width=1,
             border_color="#D8CAB0",
             width=320,
-            height=44,
+            height=38,
         )
         search_wrap.pack(side="left", padx=(0, 12))
         search_wrap.pack_propagate(False)
@@ -372,8 +382,8 @@ class PremiumAppShell(ctk.CTkFrame):
             placeholder_text_color="#8B857C",
             corner_radius=0,
             width=250,
-            height=30,
-            font=("Arial", 13),
+            height=26,
+            font=("Arial", 12),
         )
         self.search_entry.pack(side="left", fill="both", expand=True, padx=(0, 4))
         self.search_entry.bind("<KeyRelease>", self._handle_search_change)
@@ -405,7 +415,7 @@ class PremiumAppShell(ctk.CTkFrame):
             bg_color=self.BODY_BG,
             corner_radius=16,
             width=138,
-            height=44,
+            height=38,
             font=("Arial", 11, "bold"),
             anchor="center",
         )
@@ -421,9 +431,9 @@ class PremiumAppShell(ctk.CTkFrame):
             hover_color="#E9DECF",
             bg_color=self.BODY_BG,
             text_color=self.TEXT_MID,
-            width=44,
-            height=44,
-            corner_radius=18,
+            width=38,
+            height=38,
+            corner_radius=16,
             border_width=0,
         )
 

@@ -77,7 +77,7 @@ class InvoiceDAO:
     # GET ALL INVOICES
     # =========================
     @staticmethod
-    def get_all_invoices():
+    def get_all_invoices(city=None):
         """
         Return all invoices with joined tenant, apartment, and city info.
         Good for invoice lists and admin/finance screens.
@@ -85,7 +85,7 @@ class InvoiceDAO:
         conn = DBManager.get_connection()
         cursor = conn.cursor()
 
-        cursor.execute("""
+        query = """
         SELECT
             i.invoiceID,
             i.leaseID,
@@ -103,8 +103,13 @@ class InvoiceDAO:
         JOIN tenants t ON l.tenantID = t.tenantID
         JOIN apartments a ON l.apartmentID = a.apartmentID
         LEFT JOIN locations loc ON a.location_id = loc.location_id
-        ORDER BY i.invoiceID DESC
-        """)
+        """
+        params = []
+        if city:
+            query += " WHERE loc.city = ?"
+            params.append(city)
+        query += " ORDER BY i.invoiceID DESC"
+        cursor.execute(query, tuple(params))
 
         rows = cursor.fetchall()
         conn.close()
@@ -186,7 +191,7 @@ class InvoiceDAO:
     # GET OPEN INVOICES
     # =========================
     @staticmethod
-    def get_open_invoices():
+    def get_open_invoices(city=None):
         """
         Return invoices that still need attention:
         UNPAID, PARTIAL, or LATE.
@@ -194,7 +199,7 @@ class InvoiceDAO:
         conn = DBManager.get_connection()
         cursor = conn.cursor()
 
-        cursor.execute("""
+        query = """
         SELECT
             i.invoiceID,
             i.leaseID,
@@ -212,9 +217,14 @@ class InvoiceDAO:
         JOIN tenants t ON l.tenantID = t.tenantID
         JOIN apartments a ON l.apartmentID = a.apartmentID
         LEFT JOIN locations loc ON a.location_id = loc.location_id
-        WHERE i.status IN ('UNPAID', 'PARTIAL', 'LATE')
-        ORDER BY i.due_date ASC, i.invoiceID DESC
-        """)
+        WHERE UPPER(TRIM(i.status)) IN ('UNPAID', 'PARTIAL', 'LATE', 'PENDING', 'OPEN')
+        """
+        params = []
+        if city:
+            query += " AND loc.city = ?"
+            params.append(city)
+        query += " ORDER BY i.due_date ASC, i.invoiceID DESC"
+        cursor.execute(query, tuple(params))
 
         rows = cursor.fetchall()
         conn.close()

@@ -30,6 +30,14 @@ class DBManager:
             role_name TEXT UNIQUE
         );
 
+        CREATE TABLE IF NOT EXISTS role_permissions (
+            role_id INTEGER NOT NULL,
+            permission_key TEXT NOT NULL,
+            allowed INTEGER NOT NULL DEFAULT 0 CHECK(allowed IN (0, 1)),
+            PRIMARY KEY(role_id, permission_key),
+            FOREIGN KEY(role_id) REFERENCES roles(id) ON DELETE CASCADE
+        );
+
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             full_name TEXT,

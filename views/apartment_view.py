@@ -1,27 +1,66 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 from controllers.apartment_controller import ApartmentController
+from controllers.auth_controller import AuthController
 from dao.location_dao import LocationDAO
+from views.premium_shell import PremiumAppShell
 
 
 class ApartmentView(tk.Frame):
 
     def __init__(self, parent, back_callback):
-        super().__init__(parent)
+        super().__init__(parent, bg="#F9F5EE")
         self.pack(fill="both", expand=True)
+        self.is_admin = AuthController.is_admin()
+        self.city_scope = AuthController.get_city_scope()
 
-        main_frame = ttk.Frame(self, padding=20)
-        main_frame.pack(fill="both", expand=True)
+        role = AuthController.get_current_role()
+        nav_sections = [
+            {"title": "Overview", "items": [{"label": "Dashboard", "action": back_callback, "icon": "⌂"}]},
+            {
+                "title": "Management",
+                "items": [
+                    {"label": "Tenants", "action": back_callback, "icon": "👤"},
+                    {"label": "Apartments", "action": lambda: None, "icon": "▦"},
+                ],
+            },
+        ]
+        if AuthController.can_access_feature("lease_management", role):
+            nav_sections[1]["items"].append({"label": "Leases", "action": back_callback, "icon": "📄"})
 
-        # Top
-        top_frame = ttk.Frame(main_frame)
-        top_frame.pack(fill="x")
+        shell = PremiumAppShell(
+            self,
+            page_title="Apartment Management",
+            on_logout=back_callback,
+            active_nav="Apartments",
+            nav_sections=nav_sections,
+            footer_action_label="Back to Dashboard",
+            search_placeholder="Search units...",
+        )
+        content = shell.content
 
-        ttk.Button(top_frame, text="← Back", command=back_callback).pack(side="left")
-        ttk.Label(top_frame, text="Apartment Management", font=("Arial", 16, "bold")).pack(side="left", padx=20)
+        apartments = ApartmentController.get_all_apartments(city=self.city_scope)
+        total_units = len(apartments)
+        avg_rent = int(sum(float(a["rent"]) for a in apartments) / total_units) if total_units else 0
+        cities = len({a["city"] for a in apartments}) if apartments else 0
+
+        stat_row = tk.Frame(content, bg="#F9F5EE")
+        stat_row.pack(fill="x", pady=(0, 10))
+        for col in range(3):
+            stat_row.grid_columnconfigure(col, weight=1)
+        stats = [
+            ("TOTAL UNITS", str(total_units)),
+            ("AVG RENT", f"£{avg_rent}"),
+            ("CITIES", str(cities)),
+        ]
+        for idx, (label, value) in enumerate(stats):
+            card = tk.Frame(stat_row, bg="#FFFFFF", highlightthickness=1, highlightbackground="#E4D8C6", padx=14, pady=10)
+            card.grid(row=0, column=idx, sticky="ew", padx=5)
+            tk.Label(card, text=label, bg="#FFFFFF", fg="#9D8B73", font=("Segoe UI", 9, "bold")).pack(anchor="w")
+            tk.Label(card, text=value, bg="#FFFFFF", fg="#2F2A23", font=("Georgia", 19, "bold")).pack(anchor="w", pady=(2, 0))
 
         # FORM
-        form_frame = ttk.LabelFrame(main_frame, text="Apartment Details", padding=15)
+        form_frame = ttk.LabelFrame(content, text="Apartment Details", padding=15)
         form_frame.pack(fill="x", pady=10)
         
         ttk.Label(form_frame, text="Location").grid(row=0, column=0, padx=10, pady=5)
@@ -54,7 +93,7 @@ class ApartmentView(tk.Frame):
         self.delete_btn.grid(row=0, column=2, padx=5)
 
         # TABLE
-        table_frame = ttk.LabelFrame(main_frame, text="Apartments", padding=10)
+        table_frame = ttk.LabelFrame(content, text="Apartments", padding=10)
         table_frame.pack(fill="both", expand=True)
 
         # Search
@@ -77,7 +116,7 @@ class ApartmentView(tk.Frame):
 
         for col in columns:
             self.table.heading(col, text=col)
-            self.table.column(col, width=120, anchor="center")
+            self.table.column(col, width=140, stretch=True, anchor="center")
 
         self.table.pack(side="left", fill="both", expand=True)
 
@@ -93,7 +132,7 @@ class ApartmentView(tk.Frame):
         for row in self.table.get_children():
             self.table.delete(row)
 
-        apartments = ApartmentController.get_all_apartments()
+        apartments = ApartmentController.get_all_apartments(city=self.city_scope)
 
         for apt in apartments:
             self.table.insert("", tk.END, values=(
@@ -129,6 +168,9 @@ class ApartmentView(tk.Frame):
 
     def add_apartment(self):
         selected_city = self.location_combo.get()
+        if not AuthController.can_access_city(selected_city):
+            messagebox.showerror("Restricted", "You can only manage apartments in your assigned location.")
+            return
         location_id = self.location_map[selected_city]
 
         apt_type = self.type.get()
@@ -159,6 +201,9 @@ class ApartmentView(tk.Frame):
         apt_id = self.table.item(selected[0], "values")[0]
 
         selected_city = self.location_combo.get()
+        if not AuthController.can_access_city(selected_city):
+            messagebox.showerror("Restricted", "You can only manage apartments in your assigned location.")
+            return
         location_id = self.location_map[selected_city]
 
         ApartmentController.update_apartment(
@@ -189,7 +234,7 @@ class ApartmentView(tk.Frame):
         for row in self.table.get_children():
             self.table.delete(row)
 
-        results = ApartmentController.search_apartment(keyword)
+        results = ApartmentController.search_apartment(keyword, city=self.city_scope)
 
         for apt in results:
             self.table.insert("", tk.END, values=(
@@ -203,6 +248,8 @@ class ApartmentView(tk.Frame):
 
     def load_locations(self):
         locations = LocationDAO.get_all_locations()
+        if not self.is_admin and self.city_scope:
+            locations = [loc for loc in locations if str(loc["city"]).strip() == self.city_scope]
 
         # store mapping: city → id
         self.location_map = {loc["city"]: loc["location_id"] for loc in locations}
@@ -211,7 +258,9 @@ class ApartmentView(tk.Frame):
         self.location_combo["values"] = list(self.location_map.keys())
 
         if locations:
-            self.location_combo.current(0)  # select first by default   
+            self.location_combo.current(0)  # select first by default
+        if not self.is_admin:
+            self.location_combo.configure(state="disabled")
 
     def clear_fields(self):
         self.location_combo.set("") 
