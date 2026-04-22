@@ -1,3 +1,6 @@
+# Student Name: Kyaw Thike (oliver) San
+# Student ID: 25014001
+# Module: UFCF8S-30-2 Advanced Software Development
 import tkinter as tk
 from tkinter import ttk, messagebox
 from controllers.lease_controller import LeaseController

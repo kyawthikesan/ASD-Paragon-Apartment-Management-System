@@ -103,12 +103,16 @@ This section maps completed features to the assessment criteria.
 
 ## Team Members and Roles
 This project was completed by a group of four members:
-**Shune Pyae Pyae Aung** – Project Lead, System Architect, and Integration Lead
-Responsible for leading the project, dividing tasks among team members, coordinating implementation milestones, planning the system structure, supporting module integration, and ensuring the final application aligned with assessment requirements.
-**Kyaw Thike San** – UI/Frontend Developer
-Responsible for designing and implementing key graphical user interface components, improving layout, and enhancing user interaction.
-**Nang Phwe Hleng Hun** – Backend and Database Developer
+
+**Shune Pyae Pyae Aung** – Project Lead, System Architect, Integration Lead, and UI/Frontend Developer  
+Responsible for leading the project, dividing tasks among team members, coordinating implementation milestones, planning the overall system structure, supporting module integration, ensuring the final application aligned with assessment requirements, and designing and implementing key graphical user interface components to improve layout, usability, and user interaction.
+
+**Kyaw Thike San** – Maintenance and Finance Module Developer, Integration Support, and Testing/Deployment Support  
+Responsible for developing and refining the maintenance component of the system, including maintenance request creation, request tracking, scheduling and updating maintenance work, resolution handling, and maintenance cost reporting. Also contributed to the finance component by fixing and improving payments and reports features. In addition, supported role-based workflow improvements, usability enhancements, debugging issues across different environments, Git/GitHub synchronization, cross-platform testing, and system integration.
+
+**Nang Phwe Hleng Hun** – Backend and Database Developer  
 Responsible for database design, data handling, query implementation, and backend logic.
+
 [Member 4 Name] – Testing and Documentation Lead
 Responsible for testing system functions, identifying bugs, supporting debugging, and preparing documentation.
 
