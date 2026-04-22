@@ -110,8 +110,8 @@ Responsible for leading the project, dividing tasks among team members, coordina
 **Kyaw Thike San** – Maintenance and Finance Module Developer, Integration Support, and Testing/Deployment Support  
 Responsible for developing and refining the maintenance component of the system, including maintenance request creation, request tracking, scheduling and updating maintenance work, resolution handling, and maintenance cost reporting. Also contributed to the finance component by fixing and improving payments and reports features. In addition, supported role-based workflow improvements, usability enhancements, debugging issues across different environments, Git/GitHub synchronization, cross-platform testing, and system integration.
 
-**Nang Phwe Hleng Hun** – Backend and Database Developer  
-Responsible for database design, data handling, query implementation, and backend logic.
+**Nang Phwe Hleng Hun** – Tenant, Apartment, and Lease Module Developer, UML Designer, and Methodology & Documentation Lead
+Responsible for designing and implementing core system modules for tenant, apartment, and lease management, including CRUD operations, search features, and apartment availability tracking. Implemented lease logic with validation checks such as tenant eligibility and apartment availability, and handled lease creation, termination, and status updates. Ensured data consistency through DAO-based interactions and module integration. Also developed UML diagrams (class and sequence) and contributed to documenting the Agile-based development process and team collaboration in the project report.
 
 [Member 4 Name] – Testing and Documentation Lead
 Responsible for testing system functions, identifying bugs, supporting debugging, and preparing documentation.
