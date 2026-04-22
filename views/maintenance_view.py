@@ -28,7 +28,7 @@ class MaintenanceDashboardView(ttk.Frame):
         self.tree.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
 
         # Control Panel
-        btn_frame = tk.Frame(root)
+        btn_frame = ttk.Frame(self)
         btn_frame.pack(pady=20)
         ttk.Button(btn_frame, text="🔄 Refresh", command=self.load_data).grid(row=0, column=0, padx=5)
         ttk.Button(btn_frame, text="📅 Schedule/Update", command=self.open_scheduler).grid(row=0, column=1, padx=5)

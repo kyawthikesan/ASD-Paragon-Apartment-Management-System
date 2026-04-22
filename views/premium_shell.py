@@ -67,7 +67,8 @@ class PremiumAppShell(ctk.CTkFrame):
         self._role_name = str(role_name).replace("_", " ").title()
         self._display_name = " ".join(str(self._full_name).split()).title() or "Unknown User"
 
-        self._search_placeholder = search_placeholder
+        search_hint = str(search_placeholder or "").strip()
+        self._search_placeholder = search_hint or "Search here..."
         self._location_label = self._resolve_location_label(location_label, user)
         self._on_search_change = on_search_change
         self._on_search_submit = on_search_submit
@@ -77,6 +78,8 @@ class PremiumAppShell(ctk.CTkFrame):
         self._search_debounce_job = None
         self._search_watch_job = None
         self._last_search_text = ""
+        self._keypress_bind_host = None
+        self._keypress_bind_id = None
 
         self._brand_image = None
         self._icon_cache = {}
@@ -85,6 +88,8 @@ class PremiumAppShell(ctk.CTkFrame):
             nav_sections = [{"title": "Overview", "items": nav_items or []}]
 
         self._build_layout(page_title, on_logout, active_nav, nav_sections, footer_action_label)
+        self._bind_global_search_typing()
+        self.bind("<Destroy>", self._cleanup_global_bindings, add="+")
 
     @staticmethod
     def _read_user_value(user, key, fallback):
@@ -342,7 +347,7 @@ class PremiumAppShell(ctk.CTkFrame):
         ).grid(row=0, column=0, sticky="w", padx=22, pady=(12, 8))
 
         right = ctk.CTkFrame(topbar, fg_color=self.BODY_BG, corner_radius=0)
-        right.grid(row=0, column=1, sticky="e", padx=18, pady=(10, 4))
+        right.grid(row=0, column=1, sticky="e", padx=18, pady=(8, 6))
 
         search_wrap = ctk.CTkFrame(
             right,
@@ -402,7 +407,7 @@ class PremiumAppShell(ctk.CTkFrame):
         self._start_search_watch()
 
         bell_btn = self._icon_pill_button(right, "bell", self._handle_bell_click, fallback="🔔")
-        bell_btn.pack(side="left", padx=(0, 10))
+        bell_btn.pack(side="left", padx=(0, 12))
 
         if self._notification_count > 0:
             ctk.CTkLabel(
@@ -417,7 +422,7 @@ class PremiumAppShell(ctk.CTkFrame):
             ).place(relx=1.0, rely=0.0, x=-2, y=2, anchor="ne")
 
         settings_btn = self._icon_pill_button(right, "settings", self._handle_settings_click, fallback="⚙️")
-        settings_btn.pack(side="left", padx=(0, 12))
+        settings_btn.pack(side="left", padx=(0, 16))
 
         self.date_label = ctk.CTkLabel(
             right,
@@ -443,9 +448,9 @@ class PremiumAppShell(ctk.CTkFrame):
             hover_color="#E9DECF",
             bg_color=self.BODY_BG,
             text_color=self.TEXT_MID,
-            width=38,
-            height=38,
-            corner_radius=16,
+            width=36,
+            height=36,
+            corner_radius=14,
             border_width=0,
         )
 
@@ -935,12 +940,7 @@ class PremiumAppShell(ctk.CTkFrame):
         self.after(60000, self._refresh_date)
 
     def _handle_search_change(self, event=None):
-        if self._search_debounce_job:
-            try:
-                self.after_cancel(self._search_debounce_job)
-            except Exception:
-                pass
-        self._search_debounce_job = self.after(120, self._emit_search_change)
+        self._emit_search_change()
 
     def _handle_search_submit(self, event=None):
         if self._search_debounce_job:
@@ -949,13 +949,85 @@ class PremiumAppShell(ctk.CTkFrame):
             except Exception:
                 pass
             self._search_debounce_job = None
+        self._last_search_text = (self.search_entry.get() or "").strip()
         if callable(self._on_search_submit):
             self._on_search_submit((self.search_entry.get() or "").strip())
 
     def _emit_search_change(self):
         self._search_debounce_job = None
+        self._last_search_text = (self.search_entry.get() or "").strip()
         if callable(self._on_search_change):
             self._on_search_change((self.search_entry.get() or "").strip())
+
+    def _bind_global_search_typing(self):
+        """Allow immediate typing into search when focus is on non-input widgets."""
+        host = self.winfo_toplevel()
+        if not host:
+            return
+        try:
+            self._keypress_bind_id = host.bind("<KeyPress>", self._route_typing_to_search, add="+")
+            self._keypress_bind_host = host
+        except Exception:
+            self._keypress_bind_id = None
+            self._keypress_bind_host = None
+
+    def _cleanup_global_bindings(self, event=None):
+        if event is not None and event.widget is not self:
+            return
+        if self._keypress_bind_host is not None and self._keypress_bind_id is not None:
+            try:
+                self._keypress_bind_host.unbind("<KeyPress>", self._keypress_bind_id)
+            except Exception:
+                pass
+        self._keypress_bind_host = None
+        self._keypress_bind_id = None
+
+    def _is_typing_widget(self, widget):
+        if widget is None:
+            return False
+        if widget == getattr(self, "search_entry", None):
+            return True
+        try:
+            class_name = str(widget.winfo_class() or "").lower()
+        except Exception:
+            class_name = ""
+        python_name = widget.__class__.__name__.lower()
+        for token in ("entry", "text", "spinbox", "combobox"):
+            if token in class_name or token in python_name:
+                return True
+        return False
+
+    def _route_typing_to_search(self, event):
+        if not getattr(self, "search_entry", None):
+            return None
+        try:
+            if not self.search_entry.winfo_exists():
+                return None
+        except Exception:
+            return None
+
+        # Ignore modifier shortcuts such as Ctrl+F, Cmd+K, Alt+...
+        if event.state & (0x0004 | 0x0008 | 0x0080):
+            return None
+
+        focus_widget = self.winfo_toplevel().focus_get()
+        if self._is_typing_widget(focus_widget):
+            return None
+
+        if event.keysym == "BackSpace":
+            current_value = self.search_entry.get()
+            if current_value:
+                self.search_entry.focus_set()
+                self.search_entry.delete(len(current_value) - 1, "end")
+                return "break"
+            return None
+
+        char = event.char or ""
+        if len(char) == 1 and char.isprintable():
+            self.search_entry.focus_set()
+            self.search_entry.insert("end", char)
+            return "break"
+        return None
 
     def _start_search_watch(self):
         if self._search_watch_job:

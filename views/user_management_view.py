@@ -77,9 +77,10 @@ class UserManagementView(ctk.CTkFrame):
         ("manage_user_accounts", "Manage User Accounts"),
     ]
 
-    def __init__(self, parent, go_back):
+    def __init__(self, parent, go_back, open_apartment_management=None):
         super().__init__(parent, fg_color="#F8F5F0")
         self.go_back = go_back
+        self.open_apartment_management = open_apartment_management or go_back
 
         # Tracks current selection and cached user/permission data.
         self.selected_user_id = None
@@ -131,7 +132,13 @@ class UserManagementView(ctk.CTkFrame):
         if AuthController.can_access_feature("tenant_management"):
             management_items.append({"label": "Tenants", "action": self.go_back, "icon": "tenants"})
         if AuthController.can_access_feature("apartment_management"):
-            management_items.append({"label": "Apartments", "action": self.go_back, "icon": "apartments"})
+            management_items.append(
+                {
+                    "label": "Apartments",
+                    "action": self.open_apartment_management,
+                    "icon": "apartments",
+                }
+            )
         if AuthController.can_access_feature("lease_management"):
             management_items.append({"label": "Leases", "action": self.go_back, "icon": "leases"})
         if AuthController.can_access_feature("maintenance_dashboard"):
@@ -156,7 +163,7 @@ class UserManagementView(ctk.CTkFrame):
                 {"title": "Admin", "items": [{"label": "User Access", "action": lambda: None, "icon": "shield"}]},
             ],
             footer_action_label="Back to Dashboard",
-            search_placeholder="search users",
+            search_placeholder="Search users...",
             on_search_change=self._on_search_change,
             on_search_submit=self._on_search_change,
             on_bell_click=self._show_alerts,
@@ -673,7 +680,9 @@ class UserManagementView(ctk.CTkFrame):
             ("User", self.full_name),
             ("Role", role_text),
         ]
-        if not is_admin:
+        if is_admin:
+            details_rows.append(("Location Access", "Full location access (All Cities)"))
+        else:
             details_rows.insert(2, ("Location", self.location))
         self.shell.show_premium_info_modal(
             title="Account Settings",

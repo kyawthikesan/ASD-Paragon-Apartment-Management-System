@@ -1,32 +1,140 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+import os
+from datetime import date
+
+import customtkinter as ctk
+try:
+    from PIL import Image
+    PIL_AVAILABLE = True
+except Exception:
+    Image = None
+    PIL_AVAILABLE = False
+
 from controllers.apartment_controller import ApartmentController
 from controllers.auth_controller import AuthController
+from dao.lease_dao import LeaseDAO
 from dao.location_dao import LocationDAO
+from dao.maintenance_dao import MaintenanceDAO
 from views.premium_shell import PremiumAppShell
 
 
 class ApartmentView(tk.Frame):
+    PAGE_BG = "#F8F5F0"
+    CARD_BG = "#FFFFFF"
+    BORDER = "#E2D7C5"
+    BORDER_SOFT = "#E9DDCA"
+    LABEL = "#89775D"
+    TEXT = "#2B2419"
+    MUTED = "#7E705A"
+    ACCENT = "#C3A04B"
+    ACCENT_HOVER = "#AF8F45"
+    POPUP_PINK = "#D95B9A"
+    POPUP_PINK_HOVER = "#C94F8D"
+    CARD_HEIGHT = 108
+    CARD_ROW_HEIGHT = 88
 
-    def __init__(self, parent, back_callback):
-        super().__init__(parent, bg="#F9F5EE")
+    STATUS_COLORS = {
+        "Occupied": {"bg": "#DCEBDD", "fg": "#2F6B3F"},
+        "Vacant": {"bg": "#F3EBDD", "fg": "#7A5A0A"},
+        "Maintenance Hold": {"bg": "#F3DEDE", "fg": "#8B3030"},
+    }
+
+    @staticmethod
+    def _read(record, key, default=None):
+        if record is None:
+            return default
+        if isinstance(record, dict):
+            value = record.get(key, default)
+            return default if value is None else value
+        try:
+            value = record[key]
+            return default if value is None else value
+        except Exception:
+            return default
+
+    def _popup_parent(self):
+        return self.winfo_toplevel()
+
+    def _center_window(self, window, parent=None):
+        host = parent or self._popup_parent()
+        window.update_idletasks()
+        host.update_idletasks()
+
+        width = window.winfo_width()
+        height = window.winfo_height()
+        if width <= 1 or height <= 1:
+            geom = window.geometry().split("+")[0]
+            if "x" in geom:
+                try:
+                    width, height = [int(v) for v in geom.split("x", 1)]
+                except Exception:
+                    width, height = 420, 320
+
+        host_x = host.winfo_rootx()
+        host_y = host.winfo_rooty()
+        host_w = host.winfo_width()
+        host_h = host.winfo_height()
+
+        x = host_x + max((host_w - width) // 2, 0)
+        y = host_y + max((host_h - height) // 2, 0)
+        window.geometry(f"{width}x{height}+{x}+{y}")
+
+    def __init__(
+        self,
+        parent,
+        back_callback,
+        open_lease_management=None,
+        open_user_management=None,
+    ):
+        super().__init__(parent, bg=self.PAGE_BG)
         self.pack(fill="both", expand=True)
+
         self.is_admin = AuthController.is_admin()
         self.city_scope = AuthController.get_city_scope()
+        self.role = AuthController.get_current_role()
+        self.open_lease_management = open_lease_management
+        self.open_user_management = open_user_management or back_callback
 
-        role = AuthController.get_current_role()
+        self.search_text = ""
+        self.active_filter = "All Units"
+        self.all_apartments = []
+        self.lease_by_apartment = {}
+        self.maintenance_hold_ids = set()
+        self.location_map = {}
+        self._property_popup_icon = None
+        self._property_popup_image = None
+        self._property_popup_ctk_image = None
+
         nav_sections = [
-            {"title": "Overview", "items": [{"label": "Dashboard", "action": back_callback, "icon": "⌂"}]},
+            {"title": "Overview", "items": [{"label": "Dashboard", "action": back_callback, "icon": "dashboard"}]},
             {
                 "title": "Management",
                 "items": [
-                    {"label": "Tenants", "action": back_callback, "icon": "👤"},
-                    {"label": "Apartments", "action": lambda: None, "icon": "▦"},
+                    {"label": "Tenants", "action": back_callback, "icon": "tenants"},
+                    {"label": "Apartments", "action": lambda: None, "icon": "apartments"},
                 ],
             },
+            {"title": "Finance", "items": []},
+            {"title": "Admin", "items": []},
         ]
-        if AuthController.can_access_feature("lease_management", role):
-            nav_sections[1]["items"].append({"label": "Leases", "action": back_callback, "icon": "📄"})
+
+        if AuthController.can_access_feature("maintenance_dashboard", self.role):
+            nav_sections[1]["items"].append({"label": "Maintenance", "action": back_callback, "icon": "maintenance"})
+        if AuthController.can_access_feature("lease_management", self.role):
+            nav_sections[1]["items"].append(
+                {
+                    "label": "Leases",
+                    "action": self.open_lease_management or back_callback,
+                    "icon": "leases",
+                }
+            )
+        if AuthController.can_access_feature("finance_dashboard", self.role):
+            nav_sections[2]["items"].append({"label": "Payments", "action": back_callback, "icon": "payments"})
+            nav_sections[2]["items"].append({"label": "Reports", "action": back_callback, "icon": "reports"})
+        # Keep User Access visible for consistent sidebar layout across roles.
+        nav_sections[3]["items"].append(
+            {"label": "User Access", "action": self.open_user_management, "icon": "shield"}
+        )
 
         self.shell = PremiumAppShell(
             self,
@@ -35,255 +143,904 @@ class ApartmentView(tk.Frame):
             active_nav="Apartments",
             nav_sections=nav_sections,
             footer_action_label="Back to Dashboard",
-            search_placeholder="Search units...",
-            on_search_change=self._on_shell_search,
-            on_search_submit=self._on_shell_search,
+            search_placeholder="Search apartments...",
+            on_search_change=self._on_search_change,
+            on_search_submit=self._on_search_change,
+            on_bell_click=self._show_alerts,
+            on_settings_click=self._show_settings,
+            notification_count=self._estimate_alert_count(),
         )
-        content = self.shell.content
+        self.content = self.shell.content
 
-        apartments = ApartmentController.get_all_apartments(city=self.city_scope)
-        total_units = len(apartments)
-        avg_rent = int(sum(float(a["rent"]) for a in apartments) / total_units) if total_units else 0
-        cities = len({a["city"] for a in apartments}) if apartments else 0
-
-        stat_row = tk.Frame(content, bg="#F9F5EE")
-        stat_row.pack(fill="x", pady=(0, 10))
-        for col in range(3):
-            stat_row.grid_columnconfigure(col, weight=1)
-        stats = [
-            ("TOTAL UNITS", str(total_units)),
-            ("AVG RENT", f"£{avg_rent}"),
-            ("CITIES", str(cities)),
-        ]
-        for idx, (label, value) in enumerate(stats):
-            card = tk.Frame(stat_row, bg="#FFFFFF", highlightthickness=1, highlightbackground="#E4D8C6", padx=14, pady=10)
-            card.grid(row=0, column=idx, sticky="ew", padx=5)
-            tk.Label(card, text=label, bg="#FFFFFF", fg="#9D8B73", font=("Segoe UI", 9, "bold")).pack(anchor="w")
-            tk.Label(card, text=value, bg="#FFFFFF", fg="#2F2A23", font=("Georgia", 19, "bold")).pack(anchor="w", pady=(2, 0))
-
-        # FORM
-        form_frame = ttk.LabelFrame(content, text="Apartment Details", padding=15)
-        form_frame.pack(fill="x", pady=10)
-        
-        ttk.Label(form_frame, text="Location").grid(row=0, column=0, padx=10, pady=5)
-        self.location_combo = ttk.Combobox(form_frame, state="readonly")
-        self.location_combo.grid(row=0, column=1)
-        self.load_locations() 
-
-        ttk.Label(form_frame, text="Type").grid(row=1, column=0, padx=10, pady=5)
-        self.type = ttk.Entry(form_frame)
-        self.type.grid(row=1, column=1)
-
-        ttk.Label(form_frame, text="Rent").grid(row=2, column=0, padx=10, pady=5)
-        self.rent = ttk.Entry(form_frame)
-        self.rent.grid(row=2, column=1)
-
-        ttk.Label(form_frame, text="Rooms").grid(row=3, column=0, padx=10, pady=5)
-        self.rooms = ttk.Entry(form_frame)
-        self.rooms.grid(row=3, column=1)
-
-        # Buttons
-        btn_frame = ttk.Frame(form_frame)
-        btn_frame.grid(row=4, column=0, columnspan=2, pady=10)
-
-        ttk.Button(btn_frame, text="Add", command=self.add_apartment).grid(row=0, column=0, padx=5)
-
-        self.update_btn = ttk.Button(btn_frame, text="Update", command=self.update_apartment, state="disabled")
-        self.update_btn.grid(row=0, column=1, padx=5)
-
-        self.delete_btn = ttk.Button(btn_frame, text="Delete", command=self.delete_apartment, state="disabled")
-        self.delete_btn.grid(row=0, column=2, padx=5)
-
-        # TABLE
-        table_frame = ttk.LabelFrame(content, text="Apartments", padding=10)
-        table_frame.pack(fill="both", expand=True)
-
-        # Search
-        search_frame = ttk.Frame(table_frame)
-        search_frame.pack(fill="x")
-
-        self.search_entry = ttk.Entry(search_frame)
-        self.search_entry.pack(side="left", padx=5)
-        self.search_entry.bind("<Return>", lambda _event: self.search_apartment())
-
-        ttk.Button(search_frame, text="Search", command=self.search_apartment).pack(side="left")
-        ttk.Button(search_frame, text="Show All", command=self.load_apartments).pack(side="left")
-
-        # Table container
-        container = ttk.Frame(table_frame)
-        container.pack(fill="both", expand=True)
-
-        columns = ("ID", "Location", "Type", "Rent", "Rooms", "Status")
-
-        self.table = ttk.Treeview(container, columns=columns, show="headings")
-
-        for col in columns:
-            self.table.heading(col, text=col)
-            self.table.column(col, width=140, stretch=True, anchor="center")
-
-        self.table.pack(side="left", fill="both", expand=True)
-
-        scrollbar = ttk.Scrollbar(container, orient="vertical", command=self.table.yview)
-        scrollbar.pack(side="right", fill="y")
-        self.table.configure(yscrollcommand=scrollbar.set)
-
-        self.table.bind("<<TreeviewSelect>>", self.fill_fields)
-
+        self.load_locations()
+        self._build_ui()
         self.load_apartments()
 
-    def load_apartments(self):
-        for row in self.table.get_children():
-            self.table.delete(row)
+    def _build_ui(self):
+        self.stats_row = ctk.CTkFrame(self.content, fg_color="transparent")
+        self.stats_row.pack(fill="x", pady=(4, 12))
+        self.stats_row.grid_columnconfigure(0, weight=1)
+        self.stats_row.grid_columnconfigure(1, weight=1)
+        self.stats_row.grid_columnconfigure(2, weight=1)
+        self.stats_row.grid_columnconfigure(3, weight=1)
 
-        apartments = ApartmentController.get_all_apartments(city=self.city_scope)
+        self.stat_values = {}
+        self._make_stat_card(0, "TOTAL UNITS", "0")
+        self._make_stat_card(1, "OCCUPIED", "0", value_color="#2F6B3F")
+        self._make_stat_card(2, "VACANT", "0", value_color="#7A5A0A")
+        self._make_stat_card(3, "MAINTENANCE HOLD", "0", value_color="#8B3030")
 
-        for apt in apartments:
-            self.table.insert("", tk.END, values=(
-                apt["apartmentID"],
-                apt["city"],
-                apt["type"],
-                apt["rent"],
-                apt["rooms"],
-                apt["status"]
-            ))
+        filter_row = ctk.CTkFrame(self.content, fg_color="transparent")
+        filter_row.pack(fill="x", pady=(0, 12))
 
-    def fill_fields(self, event):
-        selected = self.table.selection()
-        if not selected:
-            return
+        self.filter_buttons = {}
+        for label in ["All Units", "Occupied", "Vacant", "Maintenance Hold"]:
+            btn = ctk.CTkButton(
+                filter_row,
+                text=label,
+                height=34,
+                corner_radius=19,
+                font=("Segoe UI", 12, "bold"),
+                command=lambda value=label: self._set_filter(value),
+            )
+            btn.pack(side="left", padx=(0, 10))
+            self.filter_buttons[label] = btn
+        self._refresh_filter_styles()
 
-        values = self.table.item(selected[0], "values")
+        ctk.CTkButton(
+            filter_row,
+            text="+ Add Apartment",
+            height=38,
+            width=188,
+            corner_radius=16,
+            fg_color="#F3EEE5",
+            hover_color="#ECE2D2",
+            text_color=self.TEXT,
+            border_width=1,
+            border_color="#CDBEA6",
+            font=("Segoe UI", 13, "bold"),
+            command=self._open_add_dialog,
+        ).pack(side="right")
 
-        # set dropdown (city)
-        self.location_combo.set(values[1])
-
-        self.type.delete(0, tk.END)
-        self.type.insert(0, values[2])
-
-        self.rent.delete(0, tk.END)
-        self.rent.insert(0, values[3])
-
-        self.rooms.delete(0, tk.END)
-        self.rooms.insert(0, values[4])
-
-        self.update_btn.config(state="normal")
-        self.delete_btn.config(state="normal")
-
-    def add_apartment(self):
-        selected_city = self.location_combo.get()
-        if not AuthController.can_access_city(selected_city):
-            messagebox.showerror("Restricted", "You can only manage apartments in your assigned location.")
-            return
-        location_id = self.location_map[selected_city]
-
-        apt_type = self.type.get()
-        rent = self.rent.get()
-        rooms = self.rooms.get()
-
-        if not selected_city or not apt_type or not rent or not rooms:
-            messagebox.showerror("Error", "All fields are required")
-            return
-
-        ApartmentController.add_apartment(
-            location_id,
-            apt_type,
-            rent,
-            rooms
+        self.list_wrap = ctk.CTkFrame(
+            self.content,
+            fg_color=self.CARD_BG,
+            corner_radius=18,
+            border_width=1,
+            border_color=self.BORDER,
         )
+        self.list_wrap.pack(fill="both", expand=True)
 
-        messagebox.showinfo("Success", "Apartment added")
-
-        self.load_apartments()
-        self.clear_fields()
-
-    def update_apartment(self):
-        selected = self.table.selection()
-        if not selected:
-            return
-
-        apt_id = self.table.item(selected[0], "values")[0]
-
-        selected_city = self.location_combo.get()
-        if not AuthController.can_access_city(selected_city):
-            messagebox.showerror("Restricted", "You can only manage apartments in your assigned location.")
-            return
-        location_id = self.location_map[selected_city]
-
-        ApartmentController.update_apartment(
-            apt_id,
-            location_id,
-            self.type.get(),
-            self.rent.get(),
-            self.rooms.get()
+        self.cards_area = ctk.CTkScrollableFrame(
+            self.list_wrap,
+            fg_color="transparent",
+            corner_radius=0,
+            scrollbar_button_color="#D7C8AE",
+            scrollbar_button_hover_color="#C8B28F",
         )
+        self.cards_area.pack(fill="both", expand=True, padx=10, pady=10)
+        self.cards_area.grid_columnconfigure(0, weight=1)
 
-        messagebox.showinfo("Updated", "Apartment updated")
-        self.load_apartments()
+    def _make_stat_card(self, column, label, value, value_color=None):
+        card = ctk.CTkFrame(
+            self.stats_row,
+            fg_color="#FFFFFF",
+            corner_radius=16,
+            border_width=1,
+            border_color=self.BORDER,
+            height=108,
+        )
+        card.grid(row=0, column=column, padx=(0 if column == 0 else 8, 0), sticky="ew")
+        card.grid_propagate(False)
 
-    def delete_apartment(self):
-        selected = self.table.selection()
-        if not selected:
-            return
+        ctk.CTkLabel(
+            card,
+            text=label,
+            text_color="#9A8A70",
+            font=("Segoe UI", 10, "bold"),
+            anchor="w",
+        ).pack(fill="x", padx=16, pady=(16, 4))
 
-        apt_id = self.table.item(selected[0], "values")[0]
+        value_label = ctk.CTkLabel(
+            card,
+            text=value,
+            text_color=value_color or self.TEXT,
+            font=("Georgia", 28, "bold"),
+            anchor="w",
+        )
+        value_label.pack(fill="x", padx=16, pady=(0, 10))
+        self.stat_values[label] = value_label
 
-        ApartmentController.delete_apartment(apt_id)
-        messagebox.showinfo("Deleted", "Apartment deleted")
-        self.load_apartments()
+    def _set_filter(self, value):
+        self.active_filter = value
+        self._refresh_filter_styles()
+        self._render_apartment_cards()
 
-    def _on_shell_search(self, query):
-        keyword = (query or "").strip()
-        self.search_entry.delete(0, tk.END)
-        self.search_entry.insert(0, keyword)
-        if not keyword:
-            self.load_apartments()
-            return
-        self.search_apartment(keyword)
+    def _refresh_filter_styles(self):
+        for label, button in self.filter_buttons.items():
+            active = label == self.active_filter
+            button.configure(
+                fg_color=self.ACCENT if active else "#FFFFFF",
+                hover_color=self.ACCENT_HOVER if active else "#F4ECDC",
+                text_color="#FFFFFF" if active else "#6B5D44",
+                border_width=1,
+                border_color=self.ACCENT if active else "#D7C8AE",
+            )
 
-    def search_apartment(self, keyword=None):
-        if keyword is None:
-            keyword = self.search_entry.get()
-        keyword = (keyword or "").strip()
-        if not keyword:
-            self.load_apartments()
-            return
-
-        for row in self.table.get_children():
-            self.table.delete(row)
-
-        results = ApartmentController.search_apartment(keyword, city=self.city_scope)
-
-        for apt in results:
-            self.table.insert("", tk.END, values=(
-                apt["apartmentID"],
-                apt["city"],  
-                apt["type"],
-                apt["rent"],
-                apt["rooms"],
-                apt["status"]
-            ))
+    def _on_search_change(self, query):
+        self.search_text = (query or "").strip()
+        self._render_apartment_cards()
 
     def load_locations(self):
         locations = LocationDAO.get_all_locations()
         if not self.is_admin and self.city_scope:
             locations = [loc for loc in locations if str(loc["city"]).strip() == self.city_scope]
-
-        # store mapping: city → id
         self.location_map = {loc["city"]: loc["location_id"] for loc in locations}
 
-        # show city names
-        self.location_combo["values"] = list(self.location_map.keys())
+    def load_apartments(self):
+        self.all_apartments = [dict(row) for row in ApartmentController.get_all_apartments(city=self.city_scope)]
+        self.lease_by_apartment = self._build_active_lease_map()
+        self.maintenance_hold_ids = self._build_maintenance_hold_set()
+        self._update_stats()
+        self._render_apartment_cards()
 
-        if locations:
-            self.location_combo.current(0)  # select first by default
+    def _build_active_lease_map(self):
+        lease_map = {}
+        leases = LeaseDAO.get_all_leases_with_financial_details(city=self.city_scope)
+        for lease in leases:
+            if str(lease.get("status", "")).strip().lower() != "active":
+                continue
+            apartment_id = lease.get("apartmentID")
+            if apartment_id not in lease_map:
+                lease_map[apartment_id] = lease
+                continue
+
+            previous_end = str(lease_map[apartment_id].get("end_date") or "")
+            current_end = str(lease.get("end_date") or "")
+            if current_end > previous_end:
+                lease_map[apartment_id] = lease
+        return lease_map
+
+    def _build_maintenance_hold_set(self):
+        hold_ids = set()
+        active_states = {"open", "in progress", "pending", "new"}
+        for item in MaintenanceDAO.get_all_requests(city=self.city_scope):
+            apartment_id = item.get("apartmentID")
+            if not apartment_id:
+                continue
+            status = str(item.get("status") or "").strip().lower()
+            if status in active_states:
+                hold_ids.add(apartment_id)
+        return hold_ids
+
+    def _estimate_alert_count(self):
+        apartments = ApartmentController.get_all_apartments(city=self.city_scope)
+        holds = self._build_maintenance_hold_set()
+        vacant_count = 0
+        for apt in apartments:
+            status = str(self._read(apt, "status", "")).upper()
+            if status != "OCCUPIED":
+                vacant_count += 1
+        return len(holds) + vacant_count
+
+    def _normalize_status(self, apartment):
+        apartment_id = apartment["apartmentID"]
+        if apartment_id in self.maintenance_hold_ids:
+            return "Maintenance Hold"
+
+        raw = str(self._read(apartment, "status", "")).strip().upper()
+        if raw == "OCCUPIED":
+            return "Occupied"
+        return "Vacant"
+
+    def _update_stats(self):
+        counts = {"TOTAL UNITS": 0, "OCCUPIED": 0, "VACANT": 0, "MAINTENANCE HOLD": 0}
+
+        for apartment in self.all_apartments:
+            counts["TOTAL UNITS"] += 1
+            normalized = self._normalize_status(apartment)
+            if normalized == "Occupied":
+                counts["OCCUPIED"] += 1
+            elif normalized == "Vacant":
+                counts["VACANT"] += 1
+            elif normalized == "Maintenance Hold":
+                counts["MAINTENANCE HOLD"] += 1
+
+        for key, label in self.stat_values.items():
+            label.configure(text=str(counts[key]))
+
+    def _filtered_apartments(self):
+        keyword = self.search_text.lower()
+        rows = []
+        for apartment in self.all_apartments:
+            normalized_status = self._normalize_status(apartment)
+            if self.active_filter != "All Units" and normalized_status != self.active_filter:
+                continue
+
+            lease = self.lease_by_apartment.get(apartment["apartmentID"], {})
+            search_blob = " ".join(
+                [
+                    str(self._read(apartment, "apartmentID", "")),
+                    str(self._read(apartment, "city", "")),
+                    str(self._read(apartment, "type", "")),
+                    str(self._read(apartment, "rooms", "")),
+                    str(self._read(apartment, "status", "")),
+                    str(lease.get("tenant_name", "")),
+                    str(lease.get("end_date", "")),
+                ]
+            ).lower()
+
+            if keyword and keyword not in search_blob:
+                continue
+            rows.append(apartment)
+        return rows
+
+    def _render_apartment_cards(self):
+        for child in self.cards_area.winfo_children():
+            child.destroy()
+
+        apartments = self._filtered_apartments()
+        if not apartments:
+            ctk.CTkLabel(
+                self.cards_area,
+                text="No apartments match your current filter.",
+                text_color=self.MUTED,
+                font=("Segoe UI", 14),
+            ).pack(fill="x", padx=10, pady=14)
+            return
+
+        for apartment in apartments:
+            self._render_card(apartment)
+
+    def _render_card(self, apartment):
+        card = ctk.CTkFrame(
+            self.cards_area,
+            fg_color="#FFFFFF",
+            corner_radius=16,
+            border_width=1,
+            border_color=self.BORDER_SOFT,
+            height=self.CARD_HEIGHT,
+        )
+        card.pack(fill="x", padx=6, pady=(0, 8))
+        card.pack_propagate(False)
+
+        row = ctk.CTkFrame(card, fg_color="transparent", height=self.CARD_ROW_HEIGHT)
+        row.pack(fill="x", padx=14, pady=8)
+        row.pack_propagate(False)
+        row.grid_columnconfigure(1, weight=1)
+
+        left_code = ctk.CTkFrame(
+            row,
+            fg_color="#F1EBDF",
+            corner_radius=16,
+            border_width=1,
+            border_color="#D8C5A1",
+            width=70,
+            height=70,
+        )
+        left_code.grid(row=0, column=0, padx=(0, 14), sticky="w")
+        left_code.pack_propagate(False)
+
+        ctk.CTkLabel(
+            left_code,
+            text=self._unit_code(apartment["apartmentID"]),
+            text_color="#9A7A2E",
+            font=("Georgia", 15, "bold"),
+        ).pack(expand=True)
+
+        info = ctk.CTkFrame(row, fg_color="transparent")
+        info.grid(row=0, column=1, padx=(0, 12), sticky="w")
+
+        ctk.CTkLabel(
+            info,
+            text=self._unit_title(apartment),
+            text_color=self.TEXT,
+            font=("Segoe UI", 11, "bold"),
+            anchor="w",
+            justify="left",
+        ).pack(fill="x")
+
+        ctk.CTkLabel(
+            info,
+            text=self._unit_meta(apartment),
+            text_color="#8F8169",
+            font=("Segoe UI", 9, "bold"),
+            anchor="w",
+        ).pack(fill="x", pady=(2, 0))
+
+        ctk.CTkLabel(
+            info,
+            text=self._tenant_line(apartment),
+            text_color="#6F604A",
+            font=("Segoe UI", 9, "bold"),
+            anchor="w",
+            justify="left",
+        ).pack(fill="x", pady=(2, 0))
+
+        status = self._normalize_status(apartment)
+        palette = self.STATUS_COLORS[status]
+
+        right_block = ctk.CTkFrame(row, fg_color="transparent")
+        right_block.grid(row=0, column=2, sticky="e")
+
+        status_box = ctk.CTkFrame(right_block, fg_color="transparent", width=112, height=32)
+        status_box.pack(side="left", padx=(0, 14))
+        status_box.pack_propagate(False)
+
+        ctk.CTkLabel(
+            status_box,
+            text=status,
+            text_color=palette["fg"],
+            fg_color=palette["bg"],
+            corner_radius=14,
+            font=("Segoe UI", 9, "bold"),
+            anchor="center",
+            justify="center",
+        ).pack(fill="both", expand=True)
+
+        rent_box = ctk.CTkFrame(right_block, fg_color="transparent", width=110, height=44)
+        rent_box.pack(side="left", padx=(0, 12))
+        rent_box.pack_propagate(False)
+
+        ctk.CTkLabel(
+            rent_box,
+            text=self._format_rent(self._read(apartment, "rent", 0)),
+            text_color="#9A7A2E",
+            font=("Georgia", 16, "bold"),
+            anchor="e",
+        ).pack(fill="x")
+        ctk.CTkLabel(
+            rent_box,
+            text="/month",
+            text_color="#8F8169",
+            font=("Segoe UI", 10, "bold"),
+            anchor="e",
+        ).pack(fill="x")
+
+        actions = ctk.CTkFrame(right_block, fg_color="transparent")
+        actions.pack(side="left")
+
+        ctk.CTkButton(
+            actions,
+            text="View",
+            width=72,
+            height=32,
+            corner_radius=16,
+            fg_color="#F6F3ED",
+            hover_color="#ECE4D7",
+            text_color=self.TEXT,
+            border_width=1,
+            border_color="#CFC1AB",
+            font=("Segoe UI", 10, "bold"),
+            command=lambda unit=apartment: self._show_unit_details(unit),
+        ).pack(side="left", padx=(0, 6))
+        if status == "Vacant":
+            ctk.CTkButton(
+                actions,
+                text="Assign",
+                width=84,
+                height=32,
+                corner_radius=16,
+                fg_color=self.ACCENT,
+                hover_color=self.ACCENT_HOVER,
+                text_color="#FFFFFF",
+                border_width=1,
+                border_color=self.ACCENT,
+                font=("Segoe UI", 10, "bold"),
+                command=lambda unit=apartment: self._assign_apartment(unit),
+            ).pack(side="left")
+        else:
+            ctk.CTkButton(
+                actions,
+                text="Edit",
+                width=72,
+                height=32,
+                corner_radius=16,
+                fg_color="#F6F3ED",
+                hover_color="#ECE4D7",
+                text_color=self.TEXT,
+                border_width=1,
+                border_color="#CFC1AB",
+                font=("Segoe UI", 10, "bold"),
+                command=lambda unit=apartment: self._open_edit_dialog(unit),
+            ).pack(side="left")
+
+    def _unit_code(self, apartment_id):
+        try:
+            return f"A-{int(apartment_id):03d}"
+        except (TypeError, ValueError):
+            return str(apartment_id)
+
+    def _unit_title(self, apartment):
+        apartment_type = str(self._read(apartment, "type", "Apartment")).strip()
+        if "apartment" in apartment_type.lower():
+            return apartment_type
+        return f"{apartment_type} Apartment"
+
+    def _unit_meta(self, apartment):
+        city = self._read(apartment, "city", "Unknown city")
+        rooms = self._read(apartment, "rooms", "-")
+        return f"{city} · {rooms} room(s)"
+
+    def _tenant_line(self, apartment):
+        lease = self.lease_by_apartment.get(apartment["apartmentID"])
+        if not lease:
+            return "No active tenant assignment"
+        tenant = lease.get("tenant_name") or "Unknown tenant"
+        end_date = lease.get("end_date") or "-"
+        return f"Tenant: {tenant} · Lease ends {end_date}"
+
+    def _format_rent(self, value):
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return "£0"
+        if numeric.is_integer():
+            return f"£{int(numeric):,}"
+        return f"£{numeric:,.2f}"
+
+    def _show_unit_details(self, apartment):
+        lease = self.lease_by_apartment.get(apartment["apartmentID"])
+        details = [
+            f"Unit: {self._unit_code(apartment['apartmentID'])}",
+            f"Type: {self._read(apartment, 'type', '')}",
+            f"City: {self._read(apartment, 'city', '')}",
+            f"Rooms: {self._read(apartment, 'rooms', '')}",
+            f"Status: {self._normalize_status(apartment)}",
+            f"Rent: {self._format_rent(self._read(apartment, 'rent', 0))} /month",
+        ]
+        if lease:
+            details.append(f"Tenant: {lease.get('tenant_name')}")
+            details.append(f"Lease End: {lease.get('end_date')}")
+        self._show_property_popup("Apartment Details", details)
+
+    def _show_property_popup(
+        self,
+        title,
+        lines,
+        show_icon=True,
+        text_size=11,
+        popup_width=390,
+        icon_name="property",
+        icon_size=72,
+        compact=False,
+        center_content=False,
+    ):
+        popup = ctk.CTkToplevel(self)
+        popup.title(title)
+        popup.configure(fg_color="#FFFFFF")
+        line_count = max(len(lines), 1)
+        if compact:
+            popup_height = max(210, min(280, 96 + (line_count * 22) + (58 if show_icon else 0)))
+        else:
+            popup_height = max(220, min(360, 150 + (line_count * 26) + (88 if show_icon else 0)))
+        popup.geometry(f"{popup_width}x{popup_height}")
+        popup.resizable(False, False)
+        popup.transient(self._popup_parent())
+        popup.grab_set()
+        self._center_window(popup, self._popup_parent())
+
+        icon_path = os.path.join("images", "icons", f"{icon_name}.png")
+        if show_icon and os.path.exists(icon_path):
+            try:
+                full_icon = tk.PhotoImage(file=icon_path)
+                self._property_popup_icon = full_icon
+                popup.iconphoto(True, self._property_popup_icon)
+
+                # Use a much smaller in-popup image so it doesn't cover the whole modal.
+                max_size = icon_size
+                width = max(full_icon.width(), 1)
+                height = max(full_icon.height(), 1)
+                ratio = max(width / max_size, height / max_size, 1)
+                scale = int(ratio)
+                self._property_popup_image = full_icon.subsample(scale, scale)
+
+                # HighDPI-safe CTk image for CTkLabel (prevents CTk warning).
+                if PIL_AVAILABLE:
+                    pil_image = Image.open(icon_path).convert("RGBA")
+                    self._property_popup_ctk_image = ctk.CTkImage(
+                        light_image=pil_image,
+                        size=(icon_size, icon_size),
+                    )
+                else:
+                    self._property_popup_ctk_image = None
+            except Exception:
+                self._property_popup_icon = None
+                self._property_popup_image = None
+                self._property_popup_ctk_image = None
+
+        wrap = ctk.CTkFrame(
+            popup,
+            fg_color="#FFFFFF",
+            corner_radius=14,
+            border_width=1,
+            border_color="#E2D7C5",
+        )
+        wrap.pack(fill="both", expand=True, padx=14, pady=14)
+        content_parent = wrap
+        if center_content:
+            content_parent = ctk.CTkFrame(wrap, fg_color="transparent")
+            content_parent.pack(expand=True, pady=(8, 6))
+
+        if show_icon and self._property_popup_ctk_image is not None:
+            ctk.CTkLabel(content_parent, text="", image=self._property_popup_ctk_image).pack(pady=(8, 10))
+        elif show_icon and self._property_popup_image is not None:
+            tk.Label(content_parent, text="", image=self._property_popup_image, bg="#FFFFFF").pack(pady=(8, 10))
+
+        details_text = "\n".join(lines)
+        ctk.CTkLabel(
+            content_parent,
+            text=details_text,
+            text_color="#3A3226",
+            font=("Segoe UI", text_size, "bold"),
+            justify="center",
+            wraplength=popup_width - 60,
+        ).pack(padx=12, pady=(4, 10))
+
+        ctk.CTkButton(
+            content_parent,
+            text="OK",
+            height=34,
+            width=110,
+            corner_radius=12,
+            fg_color=self.POPUP_PINK,
+            hover_color=self.POPUP_PINK_HOVER,
+            text_color="#FFFFFF",
+            font=("Segoe UI", 12, "bold"),
+            command=popup.destroy,
+        ).pack(pady=(0, 8))
+
+    def _show_error_popup(self, message):
+        self._show_property_popup("Error", [message])
+
+    def _show_confirm_popup(self, title, message):
+        popup = ctk.CTkToplevel(self)
+        popup.title(title)
+        popup.configure(fg_color="#FFFFFF")
+        popup.geometry("420x260")
+        popup.resizable(False, False)
+        popup.transient(self._popup_parent())
+        popup.grab_set()
+        self._center_window(popup, self._popup_parent())
+
+        choice = {"confirmed": False}
+        wrap = ctk.CTkFrame(
+            popup,
+            fg_color="#FFFFFF",
+            corner_radius=14,
+            border_width=1,
+            border_color="#E2D7C5",
+        )
+        wrap.pack(fill="both", expand=True, padx=14, pady=14)
+
+        ctk.CTkLabel(
+            wrap,
+            text=message,
+            text_color="#3A3226",
+            font=("Segoe UI", 15, "bold"),
+            justify="center",
+            wraplength=340,
+        ).pack(padx=16, pady=(36, 22))
+
+        actions = ctk.CTkFrame(wrap, fg_color="transparent")
+        actions.pack(pady=(0, 14))
+
+        def close_with(value):
+            choice["confirmed"] = value
+            popup.destroy()
+
+        ctk.CTkButton(
+            actions,
+            text="No",
+            height=36,
+            width=110,
+            corner_radius=12,
+            fg_color="#F6F1E8",
+            hover_color="#EDE3D4",
+            text_color=self.TEXT,
+            border_width=1,
+            border_color="#C9BCA7",
+            font=("Segoe UI", 13, "bold"),
+            command=lambda: close_with(False),
+        ).pack(side="left", padx=(0, 10))
+
+        ctk.CTkButton(
+            actions,
+            text="Yes",
+            height=36,
+            width=110,
+            corner_radius=12,
+            fg_color=self.POPUP_PINK,
+            hover_color=self.POPUP_PINK_HOVER,
+            text_color="#FFFFFF",
+            font=("Segoe UI", 13, "bold"),
+            command=lambda: close_with(True),
+        ).pack(side="left")
+
+        popup.wait_window()
+        return choice["confirmed"]
+
+    def _assign_apartment(self, apartment):
+        if callable(self.open_lease_management):
+            self.open_lease_management()
+            return
+        self._show_property_popup(
+            "Assign Tenant",
+            [f"Use Lease Management to assign a tenant to {self._unit_code(apartment['apartmentID'])}."],
+        )
+
+    def _show_alerts(self):
+        maintenance_holds = len(self.maintenance_hold_ids)
+        vacant_count = sum(1 for apt in self.all_apartments if self._normalize_status(apt) == "Vacant")
+        expiring_soon = 0
+        for lease in self.lease_by_apartment.values():
+            end_date = str(lease.get("end_date") or "")
+            if not end_date:
+                continue
+            try:
+                days_left = (date.fromisoformat(end_date) - date.today()).days
+                if 0 <= days_left <= 30:
+                    expiring_soon += 1
+            except Exception:
+                continue
+
+        self.shell.show_premium_info_modal(
+            title="Alerts",
+            rows=[
+                ("Vacant units to assign", str(vacant_count)),
+                ("Maintenance holds", str(maintenance_holds)),
+                ("Leases ending in 30 days", str(expiring_soon)),
+            ],
+            highlight_nonzero=True,
+            icon_bg="#F6EED7",
+            icon_image_name="property",
+            icon_image_size=(34, 34),
+        )
+
+    def _show_settings(self):
+        user = AuthController.current_user or {}
+        name = self._read(user, "full_name", "Unknown")
+        role = str(self._read(user, "role_name", "-")).replace("_", " ").title()
+        location = self._read(user, "location", "All cities")
+        is_admin = str(role).strip().lower() == "admin"
+
+        rows = [
+            ("User", name),
+            ("Role", role),
+        ]
+        if is_admin:
+            rows.append(("Location Access", "Full location access (All Cities)"))
+        else:
+            rows.append(("Location", location))
+
+        self.shell.show_premium_info_modal(
+            title="Account Settings",
+            rows=rows,
+            icon_bg="#F6EED7",
+            icon_image_name="settings",
+            icon_image_size=(34, 34),
+        )
+
+    def _open_add_dialog(self):
+        self._open_apartment_dialog(mode="add")
+
+    def _open_edit_dialog(self, apartment):
+        self._open_apartment_dialog(mode="edit", apartment=apartment)
+
+    def _open_apartment_dialog(self, mode, apartment=None):
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("Add Apartment" if mode == "add" else "Edit Apartment")
+        dialog.configure(fg_color=self.PAGE_BG)
+        dialog.geometry("560x620")
+        dialog.resizable(False, False)
+        dialog.transient(self.winfo_toplevel())
+        dialog.grab_set()
+        self._center_window(dialog, self._popup_parent())
+
+        form = ctk.CTkFrame(
+            dialog,
+            fg_color="#FFFFFF",
+            corner_radius=16,
+            border_width=1,
+            border_color=self.BORDER,
+        )
+        form.pack(fill="both", expand=True, padx=18, pady=18)
+
+        ctk.CTkLabel(
+            form,
+            text="Add Apartment" if mode == "add" else f"Edit {self._unit_code(apartment['apartmentID'])}",
+            text_color=self.TEXT,
+            font=("Georgia", 24, "bold"),
+            anchor="w",
+        ).pack(fill="x", padx=14, pady=(12, 6))
+
+        fields = ctk.CTkFrame(form, fg_color="transparent")
+        fields.pack(fill="x", padx=12, pady=6)
+        fields.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(fields, text="Location", text_color=self.LABEL, font=("Segoe UI", 12, "bold"), anchor="w").grid(
+            row=0, column=0, sticky="w", pady=(2, 0)
+        )
+        location_combo = ctk.CTkComboBox(
+            fields,
+            values=list(self.location_map.keys()) or [""],
+            width=500,
+            height=38,
+            corner_radius=10,
+            border_color="#CEC3B2",
+            button_color="#D8C6A3",
+            button_hover_color="#C9B38A",
+            dropdown_fg_color="#FFFFFF",
+            dropdown_hover_color="#EFE5D5",
+            fg_color="#FCFAF6",
+            text_color="#2B2419",
+        )
+        location_combo.grid(row=1, column=0, sticky="ew", pady=(2, 8))
+
+        ctk.CTkLabel(fields, text="Type", text_color=self.LABEL, font=("Segoe UI", 12, "bold"), anchor="w").grid(
+            row=2, column=0, sticky="w", pady=(2, 0)
+        )
+        type_entry = ctk.CTkEntry(
+            fields,
+            height=38,
+            corner_radius=10,
+            border_color="#CEC3B2",
+            fg_color="#FCFAF6",
+            text_color="#2B2419",
+            placeholder_text="e.g. 2-Bedroom Apartment",
+        )
+        type_entry.grid(row=3, column=0, sticky="ew", pady=(2, 8))
+
+        ctk.CTkLabel(fields, text="Rent", text_color=self.LABEL, font=("Segoe UI", 12, "bold"), anchor="w").grid(
+            row=4, column=0, sticky="w", pady=(2, 0)
+        )
+        rent_entry = ctk.CTkEntry(
+            fields,
+            height=38,
+            corner_radius=10,
+            border_color="#CEC3B2",
+            fg_color="#FCFAF6",
+            text_color="#2B2419",
+            placeholder_text="e.g. 1200",
+        )
+        rent_entry.grid(row=5, column=0, sticky="ew", pady=(2, 8))
+
+        ctk.CTkLabel(fields, text="Rooms", text_color=self.LABEL, font=("Segoe UI", 12, "bold"), anchor="w").grid(
+            row=6, column=0, sticky="w", pady=(2, 0)
+        )
+        rooms_entry = ctk.CTkEntry(
+            fields,
+            height=38,
+            corner_radius=10,
+            border_color="#CEC3B2",
+            fg_color="#FCFAF6",
+            text_color="#2B2419",
+            placeholder_text="e.g. 2",
+        )
+        rooms_entry.grid(row=7, column=0, sticky="ew", pady=(2, 8))
+
+        if self.location_map:
+            first_city = next(iter(self.location_map))
+            location_combo.set(first_city)
+
+        if mode == "edit" and apartment:
+            location_combo.set(str(self._read(apartment, "city", "")))
+            type_entry.insert(0, str(self._read(apartment, "type", "")))
+            rent_entry.insert(0, str(self._read(apartment, "rent", "")))
+            rooms_entry.insert(0, str(self._read(apartment, "rooms", "")))
+
         if not self.is_admin:
-            self.location_combo.configure(state="disabled")
+            location_combo.configure(state="disabled")
 
-    def clear_fields(self):
-        self.location_combo.set("") 
-        self.type.delete(0, tk.END)
-        self.rent.delete(0, tk.END)
-        self.rooms.delete(0, tk.END)
+        actions = ctk.CTkFrame(form, fg_color="transparent")
+        actions.pack(fill="x", padx=12, pady=(2, 12))
 
-        self.update_btn.config(state="disabled")
-        self.delete_btn.config(state="disabled")
+        def submit():
+            selected_city = location_combo.get().strip()
+            if not selected_city:
+                self._show_error_popup("Location is required.")
+                return
+            if not AuthController.can_access_city(selected_city):
+                self._show_error_popup("You can only manage apartments in your assigned location.")
+                return
+            if selected_city not in self.location_map:
+                self._show_error_popup("Selected location is invalid.")
+                return
+
+            apt_type = type_entry.get().strip()
+            rent = rent_entry.get().strip()
+            rooms = rooms_entry.get().strip()
+
+            if not apt_type or not rent or not rooms:
+                self._show_error_popup("All fields are required.")
+                return
+
+            try:
+                rent_value = float(rent)
+            except ValueError:
+                self._show_error_popup("Rent must be a valid number.")
+                return
+
+            try:
+                rooms_value = int(rooms)
+            except ValueError:
+                self._show_error_popup("Rooms must be a whole number.")
+                return
+
+            if rooms_value <= 0 or rent_value < 0:
+                self._show_error_popup("Rent and rooms must be positive values.")
+                return
+
+            location_id = self.location_map[selected_city]
+
+            if mode == "add":
+                ApartmentController.add_apartment(location_id, apt_type, rent_value, rooms_value)
+                self._show_property_popup("Success", ["Apartment added successfully."])
+            else:
+                ApartmentController.update_apartment(
+                    apartment["apartmentID"],
+                    location_id,
+                    apt_type,
+                    rent_value,
+                    rooms_value,
+                )
+                self._show_property_popup("Updated", ["Apartment updated successfully."])
+
+            dialog.destroy()
+            self.load_apartments()
+
+        ctk.CTkButton(
+            actions,
+            text="Save",
+            height=36,
+            width=120,
+            corner_radius=12,
+            fg_color=self.ACCENT,
+            hover_color=self.ACCENT_HOVER,
+            text_color="#1F1A12",
+            font=("Segoe UI", 13, "bold"),
+            command=submit,
+        ).pack(side="right")
+
+        ctk.CTkButton(
+            actions,
+            text="Cancel",
+            height=36,
+            width=120,
+            corner_radius=12,
+            fg_color="#F6F1E8",
+            hover_color="#EDE3D4",
+            text_color=self.TEXT,
+            border_width=1,
+            border_color="#C9BCA7",
+            font=("Segoe UI", 13, "bold"),
+            command=dialog.destroy,
+        ).pack(side="right", padx=(0, 8))
+
+        if mode == "edit" and apartment:
+            def delete_current():
+                confirmed = self._show_confirm_popup(
+                    "Delete Apartment",
+                    f"Delete {self._unit_code(apartment['apartmentID'])}? This cannot be undone.",
+                )
+                if not confirmed:
+                    return
+                ApartmentController.delete_apartment(apartment["apartmentID"])
+                dialog.destroy()
+                self.load_apartments()
+                self._show_property_popup("Deleted", ["Apartment deleted successfully."])
+
+            ctk.CTkButton(
+                actions,
+                text="Delete",
+                height=36,
+                width=120,
+                corner_radius=12,
+                fg_color="#F3DFDF",
+                hover_color="#EBCFCF",
+                text_color="#8B3030",
+                border_width=1,
+                border_color="#DFC0C0",
+                font=("Segoe UI", 13, "bold"),
+                command=delete_current,
+            ).pack(side="left")

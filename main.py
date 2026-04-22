@@ -494,11 +494,20 @@ class PAMSApp(tk.Tk):
         fade_in()
 
     def show_user_management(self):
+        role = AuthController.get_current_role()
+        if str(role).strip().lower() != "admin":
+            self._show_access_denied_modal("User Management")
+            return
+
         if not self._require_feature_access("user_management", "User Management"):
             return
 
         self.clear_view()
-        self.current_view = UserManagementView(self.container, self.show_dashboard)
+        self.current_view = UserManagementView(
+            self.container,
+            self.show_dashboard,
+            open_apartment_management=self.show_apartment_management,
+        )
 
     def show_tenant_management(self):
         if not self._require_feature_access("tenant_management", "Tenant Management"):
@@ -509,6 +518,7 @@ class PAMSApp(tk.Tk):
             self.container,
             self.show_dashboard,
             open_user_management=self.show_user_management,
+            open_apartment_management=self.show_apartment_management,
         )
 
     def show_apartment_management(self):
@@ -516,7 +526,12 @@ class PAMSApp(tk.Tk):
             return
 
         self.clear_view()
-        self.current_view = ApartmentView(self.container, self.show_dashboard)
+        self.current_view = ApartmentView(
+            self.container,
+            self.show_dashboard,
+            open_lease_management=self.show_lease_management,
+            open_user_management=self.show_user_management,
+        )
 
     def show_lease_management(self):
         if not self._require_feature_access("lease_management", "Lease Management"):

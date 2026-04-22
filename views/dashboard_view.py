@@ -128,7 +128,7 @@ class DashboardView(tk.Frame):
             on_logout=on_logout,
             active_nav="Dashboard",
             nav_sections=nav_sections,
-            search_placeholder="search tenants, units..",
+            search_placeholder="Search tenants, apartments, leases...",
             location_label=self.location,
             on_search_change=self._filter_lease_table,
             on_search_submit=self._filter_lease_table,
@@ -798,12 +798,18 @@ class DashboardView(tk.Frame):
         if hasattr(self, "_occupancy_body") and self._occupancy_body.winfo_exists():
             self._occupancy_body.destroy()
 
+        parent.update_idletasks()
+        panel_width = max(parent.winfo_width(), 320)
+        panel_height = max(parent.winfo_height(), 220)
+        compact_mode = panel_width < 560 or panel_height < 320
+
         body = ctk.CTkFrame(parent, fg_color="#FFFFFF", corner_radius=0)
         body.pack(fill="both", expand=True, padx=14, pady=12)
         self._occupancy_body = body
 
-        body.grid_columnconfigure(0, weight=1)
-        body.grid_columnconfigure(1, weight=1)
+        body.grid_columnconfigure(0, weight=0)
+        body.grid_columnconfigure(1, weight=0)
+        body.grid_columnconfigure(2, weight=1)
 
         city_totals = {}
         city_occupied = {}
@@ -829,17 +835,21 @@ class DashboardView(tk.Frame):
         overall_pct = int((occupied_units / total_units) * 100) if total_units else 0
 
         left = ctk.CTkFrame(body, fg_color="#FFFFFF", corner_radius=0)
-        left.grid(row=0, column=0, sticky="nsw", padx=(0, 8))
+        left.grid(row=0, column=0, sticky="nw", padx=(0, 8), pady=0)
+
+        # Keep the donut inside panel bounds on short screens.
+        chart_px = int(max(120, min(220, panel_width * 0.34, panel_height - 92)))
 
         # Circular chart showing overall occupancy percentage.
-        pie_fig = Figure(figsize=(2.2, 2.2), dpi=100, facecolor="#FFFFFF")
+        pie_size = chart_px / 100
+        pie_fig = Figure(figsize=(pie_size, pie_size), dpi=100, facecolor="#FFFFFF")
         pie_ax = pie_fig.add_subplot(111)
         pie_ax.pie(
             [overall_pct, max(0, 100 - overall_pct)],
             colors=["#C9A13B", "#EFE7DA"],
             startangle=90,
             counterclock=False,
-            wedgeprops={"width": 0.16, "linewidth": 0},
+            wedgeprops={"width": 0.18 if compact_mode else 0.16, "linewidth": 0},
         )
         pie_ax.text(
             0,
@@ -848,16 +858,17 @@ class DashboardView(tk.Frame):
             ha="center",
             va="center",
             color="#2C2416",
-            fontsize=18,
+            fontsize=14 if compact_mode else 18,
             fontweight="bold",
         )
         pie_ax.axis("equal")
         pie_ax.axis("off")
-        pie_fig.tight_layout(pad=0.2)
+        # Reserve a little extra space so the ring edge is never clipped.
+        pie_fig.subplots_adjust(left=0.03, right=0.97, top=0.97, bottom=0.10)
 
         pie_chart = FigureCanvasTkAgg(pie_fig, master=left)
         pie_chart.draw()
-        pie_chart.get_tk_widget().pack()
+        pie_chart.get_tk_widget().pack(pady=(0, 2))
 
         self._occupancy_pie_chart = pie_chart
 
@@ -865,47 +876,68 @@ class DashboardView(tk.Frame):
             left,
             text="Overall Occupancy",
             text_color="#6E604A",
-            font=("Arial", 13),
-        ).pack(pady=(0, 4))
+            font=("Arial", 11 if compact_mode else 13),
+        ).pack(pady=(0, 2 if compact_mode else 4))
+
+        gutter = max(14, min(24, int(panel_width * 0.025)))
+        body.grid_columnconfigure(1, minsize=gutter)
 
         right = ctk.CTkFrame(body, fg_color="#FFFFFF", corner_radius=0)
-        right.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
+        right.grid(row=0, column=2, sticky="nsew", padx=(0, 0), pady=0)
+        right.update_idletasks()
 
         # Show a simple progress bar for each displayed city.
+        city_label_width = 74 if compact_mode else 92
+        pct_label_width = 34 if compact_mode else 40
         for city in display_cities:
             total = city_totals.get(city, 0)
             occupied = city_occupied.get(city, 0)
             pct = int((occupied / total) * 100) if total else 0
 
             row = ctk.CTkFrame(right, fg_color="#FFFFFF", corner_radius=0)
-            row.pack(fill="x", pady=6)
+            row.pack(fill="x", pady=4 if compact_mode else 6)
+            row.grid_columnconfigure(0, weight=0)
+            row.grid_columnconfigure(1, weight=1)
+            row.grid_columnconfigure(2, weight=0)
 
             ctk.CTkLabel(
                 row,
                 text=city,
                 text_color="#2C2416",
-                font=("Arial", 12),
-                width=92,
+                font=("Arial", 11 if compact_mode else 12),
+                width=city_label_width,
                 anchor="w",
-            ).pack(side="left")
+            ).grid(row=0, column=0, sticky="w")
 
-            bar = tk.Canvas(row, width=150, height=10, bg="#FFFFFF", highlightthickness=0)
-            bar.pack(side="left", padx=8)
-            bar.create_rectangle(0, 2, 150, 8, fill="#EAE2D6", outline="#EAE2D6")
-            bar.create_rectangle(0, 2, int(150 * pct / 100), 8, fill="#C9A13B", outline="#C9A13B")
+            bar = tk.Canvas(row, height=10, bg="#FFFFFF", highlightthickness=0)
+            bar.grid(row=0, column=1, sticky="ew", padx=8)
+
+            def _draw_bar(event, canvas=bar, value=pct):
+                width = max(1, int(event.width))
+                canvas.delete("all")
+                canvas.create_rectangle(0, 2, width, 8, fill="#EAE2D6", outline="#EAE2D6")
+                canvas.create_rectangle(0, 2, int(width * value / 100), 8, fill="#C9A13B", outline="#C9A13B")
+
+            bar.bind("<Configure>", _draw_bar)
 
             ctk.CTkLabel(
                 row,
                 text=f"{pct}%",
                 text_color="#6B5D44",
-                font=("Arial", 12, "bold"),
-                width=40,
+                font=("Arial", 11 if compact_mode else 12, "bold"),
+                width=pct_label_width,
                 anchor="e",
-            ).pack(side="left")
+            ).grid(row=0, column=2, sticky="e")
 
     def _build_activity(self, parent):
         # Small activity preview shown on the dashboard.
-        body = ctk.CTkFrame(parent, fg_color="#FFFFFF", corner_radius=0)
+        body = ctk.CTkScrollableFrame(
+            parent,
+            fg_color="#FFFFFF",
+            corner_radius=0,
+            scrollbar_button_color="#D7C8AE",
+            scrollbar_button_hover_color="#C8B28F",
+        )
         body.pack(fill="both", expand=True, padx=12, pady=10)
         activity_rows = self._build_activity_feed(limit=6)
 
@@ -1187,7 +1219,9 @@ class DashboardView(tk.Frame):
             ("User", self.full_name),
             ("Role", role_text),
         ]
-        if not is_admin:
+        if is_admin:
+            rows.append(("Location Access", "Full location access (All Cities)"))
+        else:
             rows.insert(2, ("Location", self.location))
 
         self.shell.show_premium_info_modal(
