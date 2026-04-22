@@ -75,6 +75,8 @@ class PremiumAppShell(ctk.CTkFrame):
         self._on_settings_click = on_settings_click
         self._notification_count = notification_count
         self._search_debounce_job = None
+        self._search_watch_job = None
+        self._last_search_text = ""
 
         self._brand_image = None
         self._icon_cache = {}
@@ -162,6 +164,10 @@ class PremiumAppShell(ctk.CTkFrame):
         for section in nav_sections:
             title = section.get("title", "").upper()
             items = section.get("items", [])
+
+            # Skip empty sections so role-restricted menus do not show orphan headings.
+            if not items:
+                continue
 
             if title:
                 ctk.CTkLabel(
@@ -393,6 +399,7 @@ class PremiumAppShell(ctk.CTkFrame):
         self.search_entry.pack(side="left", fill="both", expand=True, padx=(0, 4))
         self.search_entry.bind("<KeyRelease>", self._handle_search_change)
         self.search_entry.bind("<Return>", self._handle_search_submit)
+        self._start_search_watch()
 
         bell_btn = self._icon_pill_button(right, "bell", self._handle_bell_click, fallback="🔔")
         bell_btn.pack(side="left", padx=(0, 10))
@@ -949,6 +956,27 @@ class PremiumAppShell(ctk.CTkFrame):
         self._search_debounce_job = None
         if callable(self._on_search_change):
             self._on_search_change((self.search_entry.get() or "").strip())
+
+    def _start_search_watch(self):
+        if self._search_watch_job:
+            try:
+                self.after_cancel(self._search_watch_job)
+            except Exception:
+                pass
+        self._search_watch_job = self.after(150, self._poll_search_value)
+
+    def _poll_search_value(self):
+        self._search_watch_job = None
+        try:
+            if not getattr(self, "search_entry", None) or not self.search_entry.winfo_exists():
+                return
+            current_value = (self.search_entry.get() or "").strip()
+            if current_value != self._last_search_text:
+                self._last_search_text = current_value
+                self._handle_search_change()
+        except Exception:
+            return
+        self._search_watch_job = self.after(150, self._poll_search_value)
 
     def _handle_bell_click(self):
         if callable(self._on_bell_click):

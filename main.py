@@ -505,7 +505,11 @@ class PAMSApp(tk.Tk):
             return
 
         self.clear_view()
-        self.current_view = TenantView(self.container, self.show_dashboard)
+        self.current_view = TenantView(
+            self.container,
+            self.show_dashboard,
+            open_user_management=self.show_user_management,
+        )
 
     def show_apartment_management(self):
         if not self._require_feature_access("apartment_management", "Apartment Management"):

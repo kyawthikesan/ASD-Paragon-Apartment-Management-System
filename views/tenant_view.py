@@ -31,7 +31,7 @@ class TenantView(tk.Frame):
 
     AVATAR_PALETTE = ["#EFE2CA", "#D7E5F5", "#DAE9DB", "#EEDDDD", "#E4E0F4"]
 
-    def __init__(self, parent, back_callback):
+    def __init__(self, parent, back_callback, open_user_management=None):
         super().__init__(parent, bg=self.PAGE_BG)
         self.pack(fill="both", expand=True)
 
@@ -45,6 +45,7 @@ class TenantView(tk.Frame):
         self.current_edit_tenant = None
         self._cards_default_height = 350
         self._cards_compact_height = 130
+        self.open_user_management = open_user_management or back_callback
 
         nav_sections = [
             {
@@ -67,7 +68,9 @@ class TenantView(tk.Frame):
         if AuthController.can_access_feature("finance_dashboard", self.role):
             nav_sections[2]["items"].append({"label": "Payments", "action": back_callback, "icon": "payments"})
             nav_sections[2]["items"].append({"label": "Reports", "action": back_callback, "icon": "reports"})
-        nav_sections[3]["items"].append({"label": "User Access", "action": back_callback, "icon": "shield"})
+        nav_sections[3]["items"].append(
+            {"label": "User Access", "action": self.open_user_management, "icon": "shield"}
+        )
 
         self.shell = PremiumAppShell(
             self,
@@ -426,7 +429,6 @@ class TenantView(tk.Frame):
         rows = [
             ("User", full_name),
             ("Role", role_text),
-            ("Access Scope", "Full location access" if is_admin else "Assigned location access"),
         ]
         if not is_admin:
             rows.insert(2, ("Location", location))
@@ -702,14 +704,87 @@ class TenantView(tk.Frame):
         )
 
     def _show_required_modal(self, message):
-        self.shell.show_premium_info_modal(
-            title="Required Fields",
-            rows=[("Notice", message)],
-            icon_bg="#FCE1EF",
-            icon_image_name="require",
-            icon_image_size=(32, 32),
-            button_text="OK",
+        root = self.winfo_toplevel()
+        root.update_idletasks()
+
+        width = 460
+        height = 280
+        x = root.winfo_rootx() + (root.winfo_width() // 2) - (width // 2)
+        y = root.winfo_rooty() + (root.winfo_height() // 2) - (height // 2)
+
+        modal = tk.Toplevel(root)
+        modal.overrideredirect(True)
+        modal.configure(bg=self.PAGE_BG)
+        modal.geometry(f"{width}x{height}+{x}+{y}")
+
+        card = ctk.CTkFrame(
+            modal,
+            fg_color="#F7F7FA",
+            corner_radius=22,
+            border_width=1,
+            border_color="#E3D9C9",
         )
+        card.pack(fill="both", expand=True, padx=8, pady=8)
+
+        icon_circle = ctk.CTkFrame(
+            card,
+            width=82,
+            height=82,
+            corner_radius=41,
+            fg_color="#FCE1EF",
+        )
+        icon_circle.pack(pady=(18, 12))
+        icon_circle.pack_propagate(False)
+
+        icon_image = self.shell._load_local_modal_icon("require", size=(40, 40))
+        if icon_image:
+            label = tk.Label(icon_circle, image=icon_image, bg="#FCE1EF", bd=0, highlightthickness=0)
+            label.image = icon_image
+            label.pack(expand=True)
+        else:
+            tk.Label(
+                icon_circle,
+                text="!",
+                bg="#FCE1EF",
+                fg="#C84D8E",
+                font=("Arial", 28, "bold"),
+                bd=0,
+                highlightthickness=0,
+            ).pack(expand=True)
+
+        ctk.CTkLabel(
+            card,
+            text=message,
+            text_color=self.TEXT,
+            font=("Segoe UI", 14, "bold"),
+            justify="center",
+            wraplength=380,
+        ).pack(pady=(0, 18))
+
+        def close_modal():
+            try:
+                modal.grab_release()
+            except Exception:
+                pass
+            modal.destroy()
+
+        ctk.CTkButton(
+            card,
+            text="OK",
+            command=close_modal,
+            fg_color="#E656A0",
+            hover_color="#D84B94",
+            text_color="#FFFFFF",
+            corner_radius=16,
+            font=("Arial", 16, "bold"),
+            height=42,
+            width=190,
+        ).pack(pady=(0, 18))
+
+        modal.bind("<Escape>", lambda _e: close_modal())
+        modal.lift()
+        modal.focus_force()
+        modal.grab_set()
 
     def add_tenant(self):
         name = self.name.get().strip()

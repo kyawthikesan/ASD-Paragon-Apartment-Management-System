@@ -28,7 +28,7 @@ class ApartmentView(tk.Frame):
         if AuthController.can_access_feature("lease_management", role):
             nav_sections[1]["items"].append({"label": "Leases", "action": back_callback, "icon": "📄"})
 
-        shell = PremiumAppShell(
+        self.shell = PremiumAppShell(
             self,
             page_title="Apartment Management",
             on_logout=back_callback,
@@ -36,8 +36,10 @@ class ApartmentView(tk.Frame):
             nav_sections=nav_sections,
             footer_action_label="Back to Dashboard",
             search_placeholder="Search units...",
+            on_search_change=self._on_shell_search,
+            on_search_submit=self._on_shell_search,
         )
-        content = shell.content
+        content = self.shell.content
 
         apartments = ApartmentController.get_all_apartments(city=self.city_scope)
         total_units = len(apartments)
@@ -102,6 +104,7 @@ class ApartmentView(tk.Frame):
 
         self.search_entry = ttk.Entry(search_frame)
         self.search_entry.pack(side="left", padx=5)
+        self.search_entry.bind("<Return>", lambda _event: self.search_apartment())
 
         ttk.Button(search_frame, text="Search", command=self.search_apartment).pack(side="left")
         ttk.Button(search_frame, text="Show All", command=self.load_apartments).pack(side="left")
@@ -228,8 +231,22 @@ class ApartmentView(tk.Frame):
         messagebox.showinfo("Deleted", "Apartment deleted")
         self.load_apartments()
 
-    def search_apartment(self):
-        keyword = self.search_entry.get()
+    def _on_shell_search(self, query):
+        keyword = (query or "").strip()
+        self.search_entry.delete(0, tk.END)
+        self.search_entry.insert(0, keyword)
+        if not keyword:
+            self.load_apartments()
+            return
+        self.search_apartment(keyword)
+
+    def search_apartment(self, keyword=None):
+        if keyword is None:
+            keyword = self.search_entry.get()
+        keyword = (keyword or "").strip()
+        if not keyword:
+            self.load_apartments()
+            return
 
         for row in self.table.get_children():
             self.table.delete(row)

@@ -672,7 +672,6 @@ class UserManagementView(ctk.CTkFrame):
         details_rows = [
             ("User", self.full_name),
             ("Role", role_text),
-            ("Access Scope", "Full location access" if is_admin else "Assigned location access"),
         ]
         if not is_admin:
             details_rows.insert(2, ("Location", self.location))

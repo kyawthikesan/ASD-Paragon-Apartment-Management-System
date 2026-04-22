@@ -1186,7 +1186,6 @@ class DashboardView(tk.Frame):
         rows = [
             ("User", self.full_name),
             ("Role", role_text),
-            ("Access Scope", "Full location access" if is_admin else "Assigned location access"),
         ]
         if not is_admin:
             rows.insert(2, ("Location", self.location))
