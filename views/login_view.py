@@ -10,7 +10,7 @@ from styles.colors import *
 from styles.fonts import *
 
 try:
-    from PIL import Image, ImageTk, ImageFilter, ImageEnhance
+    from PIL import Image, ImageTk, ImageFilter, ImageEnhance, ImageDraw
     PIL_AVAILABLE = True
 except ImportError:
     PIL_AVAILABLE = False
@@ -27,6 +27,7 @@ class LoginView(tk.Frame):
         self.logo_image = None
         self.forgot_icon_image = None
         self.signin_icon_image = None
+        self.signin_btn_render_image = None
 
         # Tracks whether the username should be saved locally.
         self.remember_var = tk.BooleanVar(value=False)
@@ -46,6 +47,7 @@ class LoginView(tk.Frame):
         self.eye_icon_hide = {}
         self.using_image_eye_icons = False
         self.eye_icon_size = (20, 20)
+        self._signin_btn_hover = False
 
         self._load_password_toggle_icons()
 
@@ -182,7 +184,7 @@ class LoginView(tk.Frame):
             text="Welcome back",
             bg=BG_MAIN,
             fg=TEXT_ON_DARK,
-            font=FONT_HEADING,
+            font=("Segoe UI", 28, "bold"),
         ).pack(anchor="w")
 
         tk.Label(
@@ -190,10 +192,9 @@ class LoginView(tk.Frame):
             text="Sign in to continue to PAMS",
             bg=BG_MAIN,
             fg=TEXT_MUTED,
-            font=FONT_SUBHEAD,
+            font=("Segoe UI", 12),
         ).pack(anchor="w", pady=(4, 0))
-
-        tk.Frame(content, bg=DIVIDER_DARK, height=1).pack(fill="x", pady=30)
+        tk.Frame(content, bg=BG_MAIN, height=1).pack(fill="x", pady=22)
 
         self.username_wrap, self.username_entry = self._field(content)
         self.username_wrap.pack(fill="x", pady=(0, 20))
@@ -269,25 +270,85 @@ class LoginView(tk.Frame):
             cursor=self.ui_cursor,
         ).pack(side="left")
 
-        # Main login action button.
-        btn = tk.Button(
+        # Main login action button (custom canvas to avoid native gray styling).
+        btn_canvas = tk.Canvas(
             content,
-            text="SIGN IN",
-            command=self._login,
-            font=FONT_BTN,
-            bg=METAL,
-            fg=BTN_FG,
-            activebackground=METAL_LIGHT,
-            activeforeground=BTN_FG,
-            relief="flat",
+            height=52,
+            bg=BG_MAIN,
+            highlightthickness=0,
             bd=0,
             cursor=self.ui_cursor,
-            height=2,
         )
-        btn.pack(fill="x")
+        btn_canvas.pack(fill="x")
 
-        btn.bind("<Enter>", lambda e: btn.config(bg=METAL_LIGHT))
-        btn.bind("<Leave>", lambda e: btn.config(bg=METAL))
+        def draw_signin_button():
+            btn_canvas.delete("all")
+            w = max(2, btn_canvas.winfo_width())
+            h = max(2, btn_canvas.winfo_height())
+            border = "#9B825F"
+            grad_top = "#D8C6A9" if self._signin_btn_hover else "#D1BEA0"
+            grad_bottom = "#BFA47E" if self._signin_btn_hover else "#B3956C"
+
+            # Rounded gradient button body.
+            if PIL_AVAILABLE:
+                img_w = max(2, w - 6)
+                img_h = max(2, h - 10)
+                gradient = Image.new("RGBA", (img_w, img_h), (0, 0, 0, 0))
+                draw = ImageDraw.Draw(gradient)
+
+                # Vertical gradient blend.
+                def _hex_to_rgb(value):
+                    value = value.lstrip("#")
+                    return tuple(int(value[i:i + 2], 16) for i in (0, 2, 4))
+
+                top_rgb = _hex_to_rgb(grad_top)
+                bottom_rgb = _hex_to_rgb(grad_bottom)
+
+                for y in range(img_h):
+                    t = y / max(1, img_h - 1)
+                    r = int(top_rgb[0] + (bottom_rgb[0] - top_rgb[0]) * t)
+                    g = int(top_rgb[1] + (bottom_rgb[1] - top_rgb[1]) * t)
+                    b = int(top_rgb[2] + (bottom_rgb[2] - top_rgb[2]) * t)
+                    draw.line([(0, y), (img_w, y)], fill=(r, g, b, 255))
+
+                mask = Image.new("L", (img_w, img_h), 0)
+                ImageDraw.Draw(mask).rounded_rectangle((0, 0, img_w - 1, img_h - 1), radius=14, fill=255)
+                gradient.putalpha(mask)
+
+                border_layer = Image.new("RGBA", (img_w, img_h), (0, 0, 0, 0))
+                ImageDraw.Draw(border_layer).rounded_rectangle(
+                    (0, 0, img_w - 1, img_h - 1), radius=14, outline=border, width=1
+                )
+                gradient.alpha_composite(border_layer)
+
+                self.signin_btn_render_image = ImageTk.PhotoImage(gradient)
+                btn_canvas.create_image(3, 5, image=self.signin_btn_render_image, anchor="nw")
+            else:
+                self._create_rounded_rect(
+                    btn_canvas, 3, 5, w - 3, h - 5, 14,
+                    fill=grad_bottom, outline=border, width=1
+                )
+            btn_canvas.create_text(
+                w // 2,
+                h // 2,
+                text="SIGN IN",
+                fill="#FFFFFF",
+                font=("Segoe UI", 15, "bold"),
+            )
+
+        def on_signin_enter(event=None):
+            self._signin_btn_hover = True
+            draw_signin_button()
+
+        def on_signin_leave(event=None):
+            self._signin_btn_hover = False
+            draw_signin_button()
+
+        btn_canvas.bind("<Configure>", lambda e: draw_signin_button())
+        btn_canvas.bind("<Enter>", on_signin_enter)
+        btn_canvas.bind("<Leave>", on_signin_leave)
+        btn_canvas.bind("<Button-1>", lambda e: self._login())
+        draw_signin_button()
 
         # Password recovery link.
         forgot = tk.Label(
@@ -375,15 +436,6 @@ class LoginView(tk.Frame):
             fill="",
             outline="#ECE3D5",
             width=1,
-            tags="card",
-        )
-        canvas.create_line(
-            38,
-            28,
-            width - 52,
-            28,
-            fill=METAL,
-            width=2,
             tags="card",
         )
         canvas.tag_lower("card")

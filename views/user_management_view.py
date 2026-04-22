@@ -1440,7 +1440,6 @@ class UserManagementView(ctk.CTkFrame):
         dialog = ctk.CTkToplevel(self)
         dialog.title("Edit User" if is_edit else "Add User")
         self._center_dialog(dialog, 560, 520)
-        dialog.transient(self.winfo_toplevel())
         dialog.grab_set()
         dialog.configure(fg_color="#F8F5F0")
         dialog.after(30, lambda: (dialog.lift(), dialog.focus_force()))

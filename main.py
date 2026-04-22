@@ -165,29 +165,17 @@ class PAMSApp(tk.Tk):
         self.clear_view()
 
         try:
-            # Try the newer signature first (includes finance callback)
-            try:
-                self.current_view = DashboardView(
-                    self.container,
-                    self.logout,
-                    self.show_user_management,
-                    self.show_tenant_management,
-                    self.show_apartment_management,
-                    self.show_lease_management,
-                    self.show_finance_dashboard,
-                    self.show_finance_payments,
-                    self.show_finance_reports,
-                )
-            except TypeError:
-                # Fallback to older signature if DashboardView only accepts 6 callbacks
-                self.current_view = DashboardView(
-                    self.container,
-                    self.logout,
-                    self.show_user_management,
-                    self.show_tenant_management,
-                    self.show_apartment_management,
-                    self.show_lease_management
-                )
+            self.current_view = DashboardView(
+                self.container,
+                self.logout,
+                self.show_user_management,
+                self.show_tenant_management,
+                self.show_apartment_management,
+                self.show_lease_management,
+                self.show_finance_dashboard,
+                self.show_finance_payments,
+                self.show_finance_reports,
+            )
 
         except Exception as error:
             details = traceback.format_exc(limit=8)

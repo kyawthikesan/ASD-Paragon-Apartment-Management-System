@@ -1030,7 +1030,6 @@ class DashboardView(tk.Frame):
         dialog = ctk.CTkToplevel(self)
         dialog.title("Activity Log")
         self._center_dialog(dialog, 760, 560)
-        dialog.transient(self.winfo_toplevel())
         dialog.grab_set()
         dialog.configure(fg_color="#F8F5F0")
         scope_text = "all cities" if self.is_admin else "your current city scope"
