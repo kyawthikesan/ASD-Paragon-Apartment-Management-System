@@ -1,3 +1,7 @@
+# Student Name: Shune Pyae Pyae (Evelyn) Aung 
+# Student ID: 24028257
+# Module: UFCF8S-30-2 Advanced Software Development
+
 import tkinter as tk
 from tkinter import messagebox
 from datetime import datetime, date
@@ -31,7 +35,13 @@ class TenantView(tk.Frame):
 
     AVATAR_PALETTE = ["#EFE2CA", "#D7E5F5", "#DAE9DB", "#EEDDDD", "#E4E0F4"]
 
-    def __init__(self, parent, back_callback, open_user_management=None):
+    def __init__(
+        self,
+        parent,
+        back_callback,
+        open_user_management=None,
+        open_apartment_management=None,
+    ):
         super().__init__(parent, bg=self.PAGE_BG)
         self.pack(fill="both", expand=True)
 
@@ -46,6 +56,7 @@ class TenantView(tk.Frame):
         self._cards_default_height = 350
         self._cards_compact_height = 130
         self.open_user_management = open_user_management or back_callback
+        self.open_apartment_management = open_apartment_management or back_callback
 
         nav_sections = [
             {
@@ -62,7 +73,13 @@ class TenantView(tk.Frame):
             {"title": "Admin", "items": []},
         ]
         if AuthController.can_access_feature("apartment_management", self.role):
-            nav_sections[1]["items"].append({"label": "Apartments", "action": back_callback, "icon": "apartments"})
+            nav_sections[1]["items"].append(
+                {
+                    "label": "Apartments",
+                    "action": self.open_apartment_management,
+                    "icon": "apartments",
+                }
+            )
         if AuthController.can_access_feature("lease_management", self.role):
             nav_sections[1]["items"].append({"label": "Leases", "action": back_callback, "icon": "leases"})
         if AuthController.can_access_feature("finance_dashboard", self.role):
@@ -430,7 +447,9 @@ class TenantView(tk.Frame):
             ("User", full_name),
             ("Role", role_text),
         ]
-        if not is_admin:
+        if is_admin:
+            rows.append(("Location Access", "Full location access (All Cities)"))
+        else:
             rows.insert(2, ("Location", location))
 
         self.shell.show_premium_info_modal(
