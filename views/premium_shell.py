@@ -132,6 +132,35 @@ class PremiumAppShell(ctk.CTkFrame):
         self.content.grid_columnconfigure(0, weight=1)
 
     def _build_sidebar(self, sidebar, on_logout, active_nav, nav_sections, footer_action_label):
+        root = self.winfo_toplevel()
+        root.update_idletasks()
+        root_height = root.winfo_height() if root.winfo_height() > 1 else root.winfo_screenheight()
+        compact_sidebar = root_height < 860
+        self._sidebar_compact = compact_sidebar
+
+        top_padx = 12 if compact_sidebar else 18
+        top_pady = (14, 8) if compact_sidebar else (24, 12)
+        location_padx = 12 if compact_sidebar else 18
+        location_pady = (6, 10) if compact_sidebar else (8, 18)
+        nav_padx = 8 if compact_sidebar else 10
+        nav_item_height = 34 if compact_sidebar else 40
+        nav_item_corner = 12 if compact_sidebar else 14
+        nav_item_font = 12 if compact_sidebar else 13
+        nav_item_padx = (10, 8) if compact_sidebar else (14, 12)
+        section_font = 10 if compact_sidebar else 11
+        section_height = 16 if compact_sidebar else 18
+        section_pady = (8, 5) if compact_sidebar else (14, 8)
+        icon_size = 16 if compact_sidebar else 18
+        footer_padx = 10 if compact_sidebar else 14
+        footer_pady = (6, 6) if compact_sidebar else (8, 10)
+        profile_size = 38 if compact_sidebar else 44
+        profile_radius = 19 if compact_sidebar else 22
+        profile_font = 14 if compact_sidebar else 16
+        profile_name_font = 11 if compact_sidebar else 12
+        profile_role_font = 9 if compact_sidebar else 10
+        logout_height = 36 if compact_sidebar else 40
+        logout_font = 12 if compact_sidebar else 13
+
         # Sidebar grid structure:
         # 0 = brand
         # 1 = location
@@ -145,20 +174,19 @@ class PremiumAppShell(ctk.CTkFrame):
 
         # ---------------- Brand ----------------
         top = ctk.CTkFrame(sidebar, fg_color=self.SIDEBAR_BG, corner_radius=0)
-        top.grid(row=0, column=0, sticky="ew", padx=18, pady=(24, 12))
+        top.grid(row=0, column=0, sticky="ew", padx=top_padx, pady=top_pady)
         self._render_brand(top)
 
         # ---------------- Location (hidden for admin to save vertical space) ----------------
         if self._role_key != "admin":
             location_box = ctk.CTkFrame(sidebar, fg_color=self.SIDEBAR_BG, corner_radius=0)
-            location_box.grid(row=1, column=0, sticky="ew", padx=18, pady=(8, 18))
+            location_box.grid(row=1, column=0, sticky="ew", padx=location_padx, pady=location_pady)
             self._render_location_row(location_box)
 
         # ---------------- Navigation ----------------
         nav_wrap = ctk.CTkFrame(sidebar, fg_color=self.SIDEBAR_BG, corner_radius=0)
-        nav_wrap.grid(row=2, column=0, sticky="nsew", padx=10, pady=(4, 0))
+        nav_wrap.grid(row=2, column=0, sticky="nsew", padx=nav_padx, pady=(4, 0))
         nav_wrap.grid_columnconfigure(0, weight=1)
-
         nav_content = ctk.CTkFrame(
             nav_wrap,
             fg_color=self.SIDEBAR_BG,
@@ -179,10 +207,10 @@ class PremiumAppShell(ctk.CTkFrame):
                     nav_content,
                     text=title,
                     text_color="#8F7F63",
-                    font=("Arial", 11, "bold"),
+                    font=("Arial", section_font, "bold"),
                     anchor="w",
-                    height=18,
-                ).pack(fill="x", padx=14, pady=(14, 8))
+                    height=section_height,
+                ).pack(fill="x", padx=14, pady=section_pady)
 
             for item in items:
                 if isinstance(item, tuple):
@@ -199,10 +227,10 @@ class PremiumAppShell(ctk.CTkFrame):
                 row = ctk.CTkFrame(
                     nav_content,
                     fg_color=self.ACTIVE_BG if is_active else "transparent",
-                    corner_radius=14 if is_active else 0,
-                    height=40,
+                    corner_radius=nav_item_corner if is_active else 0,
+                    height=nav_item_height,
                 )
-                row.pack(fill="x", padx=8, pady=4)
+                row.pack(fill="x", padx=8, pady=2 if compact_sidebar else 4)
                 row.pack_propagate(False)
 
                 btn = ctk.CTkButton(
@@ -213,15 +241,15 @@ class PremiumAppShell(ctk.CTkFrame):
                     hover_color="#241F16",
                     text_color=self.GOLD if is_active else "#F2E8D2",
                     anchor="w",
-                    corner_radius=14,
-                    height=40,
-                    font=("Arial", 13, "bold" if is_active else "normal"),
+                    corner_radius=nav_item_corner,
+                    height=nav_item_height,
+                    font=("Arial", nav_item_font, "bold" if is_active else "normal"),
                 )
-                btn.pack(side="left", fill="both", expand=True, padx=(14, 12))
+                btn.pack(side="left", fill="both", expand=True, padx=nav_item_padx)
 
                 icon_image = self._load_icon(
                     icon_key,
-                    size=(18, 18),
+                    size=(icon_size, icon_size),
                     tint=self.GOLD if is_active else "#F2E8D2",
                 )
                 if icon_image:
@@ -245,7 +273,7 @@ class PremiumAppShell(ctk.CTkFrame):
 
         # ---------------- Footer ----------------
         footer = ctk.CTkFrame(sidebar, fg_color=self.SIDEBAR_BG, corner_radius=0)
-        footer.grid(row=3, column=0, sticky="ew", padx=14, pady=(8, 10))
+        footer.grid(row=3, column=0, sticky="ew", padx=footer_padx, pady=footer_pady)
 
         ctk.CTkFrame(
             footer,
@@ -264,10 +292,10 @@ class PremiumAppShell(ctk.CTkFrame):
             text=initials,
             text_color=self.TEXT_DARK,
             fg_color=self.GOLD,
-            width=44,
-            height=44,
-            corner_radius=22,
-            font=("Arial", 16, "bold"),
+            width=profile_size,
+            height=profile_size,
+            corner_radius=profile_radius,
+            font=("Arial", profile_font, "bold"),
         ).pack(side="left", padx=(0, 10))
 
         text_col = ctk.CTkFrame(profile_row, fg_color=self.SIDEBAR_BG, corner_radius=0)
@@ -277,7 +305,7 @@ class PremiumAppShell(ctk.CTkFrame):
             text_col,
             text=self._display_name,
             text_color="#F6EEDC",
-            font=("Arial", 12, "bold"),
+            font=("Arial", profile_name_font, "bold"),
             anchor="w",
             justify="left",
             height=20,
@@ -287,7 +315,7 @@ class PremiumAppShell(ctk.CTkFrame):
             text_col,
             text=self._role_name,
             text_color=self.TEXT_SOFT,
-            font=("Arial", 10),
+            font=("Arial", profile_role_font),
             anchor="w",
             justify="left",
             height=18,
@@ -304,7 +332,7 @@ class PremiumAppShell(ctk.CTkFrame):
             footer,
             fg_color="transparent",
             corner_radius=12,
-            height=40,
+            height=logout_height,
         )
         logout_row.pack(fill="x", pady=(0, 2))
         logout_row.pack_propagate(False)
@@ -318,8 +346,8 @@ class PremiumAppShell(ctk.CTkFrame):
             text_color="#F2E8D2",
             anchor="w",
             corner_radius=12,
-            height=40,
-            font=("Arial", 13, "bold"),
+            height=logout_height,
+            font=("Arial", logout_font, "bold"),
         )
         logout_btn.pack(fill="both", expand=True, padx=10)
 
@@ -476,7 +504,7 @@ class PremiumAppShell(ctk.CTkFrame):
                     if PIL_AVAILABLE:
                         image = Image.open(logo_path).convert("RGBA")
                         image = self._trim_logo_image(image)
-                        target_width = 140
+                        target_width = 116 if getattr(self, "_sidebar_compact", False) else 140
                         ratio = target_width / max(1, image.width)
                         target_size = (target_width, max(1, int(image.height * ratio)))
                         image = image.resize(target_size, Image.LANCZOS)
@@ -484,30 +512,33 @@ class PremiumAppShell(ctk.CTkFrame):
                     else:
                         self._brand_image = tk.PhotoImage(file=logo_path)
 
-                    tk.Label(parent, image=self._brand_image, bg=self.SIDEBAR_BG).pack(anchor="center", pady=(0, 6))
+                    logo_pad = (0, 4) if getattr(self, "_sidebar_compact", False) else (0, 6)
+                    tk.Label(parent, image=self._brand_image, bg=self.SIDEBAR_BG).pack(anchor="center", pady=logo_pad)
                     return
                 except Exception:
                     pass
 
+        is_compact = getattr(self, "_sidebar_compact", False)
         ctk.CTkLabel(
             parent,
             text="PARAGON",
             text_color=self.GOLD,
-            font=("Georgia", 28, "bold"),
+            font=("Georgia", 24 if is_compact else 28, "bold"),
             anchor="w",
-            height=34,
+            height=30 if is_compact else 34,
         ).pack(fill="x", pady=(0, 3))
 
         ctk.CTkLabel(
             parent,
             text="PROPERTY MANAGEMENT",
             text_color="#F1E7D2",
-            font=("Arial", 10, "bold"),
+            font=("Arial", 9 if is_compact else 10, "bold"),
             anchor="w",
-            height=16,
+            height=14 if is_compact else 16,
         ).pack(fill="x")
 
     def _render_location_row(self, parent):
+        is_compact = getattr(self, "_sidebar_compact", False)
         row = ctk.CTkFrame(parent, fg_color=self.SIDEBAR_BG, corner_radius=0)
         row.pack(fill="x")
 
@@ -517,13 +548,13 @@ class PremiumAppShell(ctk.CTkFrame):
             corner_radius=16,
             border_width=1,
             border_color="#5A4520",
-            height=42,
+            height=38 if is_compact else 42,
         )
         location_pill.pack(fill="x")
         location_pill.pack_propagate(False)
 
         inner = ctk.CTkFrame(location_pill, fg_color="transparent", corner_radius=0)
-        inner.pack(fill="both", expand=True, padx=14, pady=6)
+        inner.pack(fill="both", expand=True, padx=12 if is_compact else 14, pady=5 if is_compact else 6)
 
         ctk.CTkLabel(
             inner,
@@ -537,7 +568,7 @@ class PremiumAppShell(ctk.CTkFrame):
             inner,
             text=self._location_label,
             text_color="#F0E4CA",
-            font=("Arial", 12, "bold"),
+            font=("Arial", 11 if is_compact else 12, "bold"),
             anchor="w",
         ).pack(side="left", fill="x", expand=True)
 

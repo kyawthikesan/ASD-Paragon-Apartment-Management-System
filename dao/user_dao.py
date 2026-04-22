@@ -182,6 +182,30 @@ class UserDAO:
             conn.close()
 
     @staticmethod
+    def get_active_maintenance_staff(city: str | None = None):
+        conn = DBManager.get_connection()
+        try:
+            query = """
+                SELECT
+                    u.id,
+                    u.full_name,
+                    u.username,
+                    u.location
+                FROM users u
+                JOIN roles r ON u.role_id = r.id
+                WHERE LOWER(r.role_name) = 'maintenance'
+                  AND u.is_active = 1
+            """
+            params = []
+            if city and str(city).strip():
+                query += " AND LOWER(TRIM(COALESCE(u.location, ''))) = LOWER(TRIM(?))"
+                params.append(str(city).strip())
+            query += " ORDER BY u.full_name"
+            return conn.execute(query, tuple(params)).fetchall()
+        finally:
+            conn.close()
+
+    @staticmethod
     def update_last_login(user_id: int) -> None:
         conn = DBManager.get_connection()
         try:

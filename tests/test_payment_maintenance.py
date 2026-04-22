@@ -93,6 +93,22 @@ class TestPaymentAndMaintenance(unittest.TestCase):
         self.assertEqual(update_result, "Success")
         self.assertEqual(MaintenanceController.get_all_requests()[0]["status"], "In Progress")
 
+        assignment_result = MaintenanceController.update_request_assignment(
+            request_id=rows[0]["requestID"],
+            assigned_staff="Maintenance User",
+            scheduled_date="2026-04-21",
+            status="Completed",
+            cost=80.5,
+            hours_spent=2.5,
+        )
+        self.assertEqual(assignment_result, "Success")
+        updated = MaintenanceController.get_all_requests()[0]
+        self.assertEqual(updated["assigned_staff"], "Maintenance User")
+        self.assertEqual(updated["scheduled_date"], "2026-04-21")
+        self.assertEqual(updated["status"], "Completed")
+        self.assertEqual(updated["cost"], 80.5)
+        self.assertEqual(updated["hours_spent"], 2.5)
+
     def test_create_request_validation(self):
         self.assertEqual(
             MaintenanceController.create_request(

@@ -10,7 +10,7 @@ class AuthController:
         "apartment_management": {"admin", "manager", "front_desk"},
         "lease_management": {"admin", "manager", "front_desk"},
         "finance_dashboard": {"admin", "finance"},
-        "maintenance_dashboard": {"maintenance"},
+        "maintenance_dashboard": {"admin", "manager", "front_desk", "maintenance"},
         # Compatibility keys used by some views/controllers.
         "payment_management": {"admin", "finance"},
         "reports": {"admin", "finance"},

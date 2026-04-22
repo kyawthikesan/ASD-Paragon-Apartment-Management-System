@@ -35,9 +35,9 @@ class DashboardView(tk.Frame):
         open_apartment_management,
         open_lease_management,
         open_finance_dashboard,
-        open_maintenance_dashboard,
-        
-        
+        open_maintenance_dashboard=None,
+        open_finance_payments=None,
+        open_finance_reports=None,
     ):
         super().__init__(parent, bg="#FAF7F2")
         self.pack(fill="both", expand=True)
@@ -60,9 +60,9 @@ class DashboardView(tk.Frame):
         self._open_tenant_management_callback = open_tenant_management
         self.open_finance_dashboard = open_finance_dashboard
         self.open_maintenance_dashboard = open_maintenance_dashboard
-        
-        
-        
+        self.open_finance_payments = open_finance_payments or open_finance_dashboard
+        self.open_finance_reports = open_finance_reports or open_finance_dashboard
+
         # Search state used to keep the lease table in sync with the search box.
         self._search_watch_job = None
         self._last_search_value = ""
@@ -96,6 +96,18 @@ class DashboardView(tk.Frame):
         if AuthController.can_access_feature("lease_management", self.role):
             nav_sections[1]["items"].append(
                 {"label": "Leases", "action": open_lease_management, "icon": "leases"}
+            )
+
+        if (
+            self.open_maintenance_dashboard
+            and AuthController.can_access_feature("maintenance_management", self.role)
+        ):
+            nav_sections[1]["items"].append(
+                {
+                    "label": "Maintenance",
+                    "action": self.open_maintenance_dashboard,
+                    "icon": "maintenance",
+                }
             )
 
         if AuthController.can_access_feature("finance_dashboard", self.role):
@@ -235,7 +247,7 @@ class DashboardView(tk.Frame):
 
         city_totals = {}
         for apt in self.apartments:
-            city = str(self._row_value(apt, "city", "Unknown")).strip()
+            city = str(self._row_value(apt, "city", "Unknown")).strip() or "Unknown"
             if city:
                 city_totals[city] = city_totals.get(city, 0) + 1
 
@@ -251,6 +263,11 @@ class DashboardView(tk.Frame):
             self.occupancy_options = [self.location] if self.location else sorted(city_totals.keys())
             if self.occupancy_options:
                 self.occupancy_filter = self.occupancy_options[0]
+
+        if not self.occupancy_options:
+            self.occupancy_options = ["All Cities"]
+        if self.occupancy_filter not in self.occupancy_options:
+            self.occupancy_filter = self.occupancy_options[0]
 
     def _build_banner(self, parent, open_tenant_management):
         # Top banner showing greeting and a quick action button.
@@ -819,7 +836,7 @@ class DashboardView(tk.Frame):
         city_occupied = {}
 
         for apt in self.apartments:
-            city = str(self._row_value(apt, "city", "Unknown")).strip()
+            city = str(self._row_value(apt, "city", "Unknown")).strip() or "Unknown"
             city_totals[city] = city_totals.get(city, 0) + 1
 
             if str(self._row_value(apt, "status", "")).strip().lower() == "occupied":
@@ -835,6 +852,9 @@ class DashboardView(tk.Frame):
             display_cities = [self.occupancy_filter]
             total_units = city_totals.get(self.occupancy_filter, 0)
             occupied_units = city_occupied.get(self.occupancy_filter, 0)
+
+        if not display_cities and self.occupancy_filter != "All Cities":
+            display_cities = [self.occupancy_filter]
 
         overall_pct = int((occupied_units / total_units) * 100) if total_units else 0
 

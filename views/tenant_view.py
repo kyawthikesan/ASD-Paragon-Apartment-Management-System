@@ -41,6 +41,9 @@ class TenantView(tk.Frame):
         back_callback,
         open_user_management=None,
         open_apartment_management=None,
+        open_lease_management=None,
+        open_finance_payments=None,
+        open_finance_reports=None,
     ):
         super().__init__(parent, bg=self.PAGE_BG)
         self.pack(fill="both", expand=True)
@@ -57,6 +60,9 @@ class TenantView(tk.Frame):
         self._cards_compact_height = 130
         self.open_user_management = open_user_management or back_callback
         self.open_apartment_management = open_apartment_management or back_callback
+        self.open_lease_management = open_lease_management or back_callback
+        self.open_finance_payments = open_finance_payments or back_callback
+        self.open_finance_reports = open_finance_reports or back_callback
 
         nav_sections = [
             {
@@ -81,10 +87,16 @@ class TenantView(tk.Frame):
                 }
             )
         if AuthController.can_access_feature("lease_management", self.role):
-            nav_sections[1]["items"].append({"label": "Leases", "action": back_callback, "icon": "leases"})
+            nav_sections[1]["items"].append(
+                {"label": "Leases", "action": self.open_lease_management, "icon": "leases"}
+            )
         if AuthController.can_access_feature("finance_dashboard", self.role):
-            nav_sections[2]["items"].append({"label": "Payments", "action": back_callback, "icon": "payments"})
-            nav_sections[2]["items"].append({"label": "Reports", "action": back_callback, "icon": "reports"})
+            nav_sections[2]["items"].append(
+                {"label": "Payments", "action": self.open_finance_payments, "icon": "payments"}
+            )
+            nav_sections[2]["items"].append(
+                {"label": "Reports", "action": self.open_finance_reports, "icon": "reports"}
+            )
         nav_sections[3]["items"].append(
             {"label": "User Access", "action": self.open_user_management, "icon": "shield"}
         )
