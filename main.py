@@ -173,8 +173,7 @@ class PAMSApp(tk.Tk):
                 self.show_apartment_management,
                 self.show_lease_management,
                 self.show_finance_dashboard,
-                self.show_finance_payments,
-                self.show_finance_reports,
+                self.show_maintenance_dashboard,
             )
 
         except Exception as error:

@@ -35,8 +35,9 @@ class DashboardView(tk.Frame):
         open_apartment_management,
         open_lease_management,
         open_finance_dashboard,
-        open_finance_payments=None,
-        open_finance_reports=None,
+        open_maintenance_dashboard,
+        
+        
     ):
         super().__init__(parent, bg="#FAF7F2")
         self.pack(fill="both", expand=True)
@@ -58,9 +59,10 @@ class DashboardView(tk.Frame):
         self.open_lease_management = open_lease_management
         self._open_tenant_management_callback = open_tenant_management
         self.open_finance_dashboard = open_finance_dashboard
-        self.open_finance_payments = open_finance_payments or open_finance_dashboard
-        self.open_finance_reports = open_finance_reports or open_finance_dashboard
-
+        self.open_maintenance_dashboard = open_maintenance_dashboard
+        
+        
+        
         # Search state used to keep the lease table in sync with the search box.
         self._search_watch_job = None
         self._last_search_value = ""
@@ -99,19 +101,21 @@ class DashboardView(tk.Frame):
         if AuthController.can_access_feature("finance_dashboard", self.role):
             nav_sections[2]["items"].append(
                 {
-                    "label": "Payments",
-                    "action": self.open_finance_payments,
+                    "label": "Payments & Reports",
+                    "action": self.open_finance_dashboard,
                     "icon": "payments",
                 }
             )
-            nav_sections[2]["items"].append(
+            
+        if (AuthController.can_access_feature("maintenance_dashboard", self.role)
+            or str(self.role).strip().lower() == "admin"):
+            nav_sections[1]["items"].append(
                 {
-                    "label": "Reports",
-                    "action": self.open_finance_reports,
-                    "icon": "reports",
+                    "label": "Maintenance",
+                    "action": open_maintenance_dashboard,
+                "icon": "maintenance",
                 }
             )
-
         # Keep User Access visible for consistent sidebar layout.
         nav_sections[3]["items"].append(
             {
@@ -120,7 +124,7 @@ class DashboardView(tk.Frame):
                 "icon": "shield",
             }
         )
-
+        
         # Build the shared dashboard shell used across the system.
         self.shell = PremiumAppShell(
             self,
@@ -515,7 +519,7 @@ class DashboardView(tk.Frame):
                 text=action_text,
                 text_color="#9A7A2E",
                 font=("Arial", 12, "bold"),
-                cursor="pointinghand",
+                cursor="hand2",
             )
             action.pack(side="right", padx=12, pady=8)
             if action_callback:

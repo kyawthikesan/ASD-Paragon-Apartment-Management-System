@@ -1,28 +1,80 @@
 import sqlite3
 
+
 def seed_database():
-    conn = sqlite3.connect("system.db")
+    conn = sqlite3.connect("pams.db")
     cursor = conn.cursor()
 
-    # 1. Clear existing data to avoid duplicates during testing
+    # Clear existing maintenance data for testing
     cursor.execute("DELETE FROM maintenance_requests")
-    
-    # 2. Add sample data
-    # Format: (complaint_id, staff_name, scheduled_date, status, cost, hours_spent)
+
     sample_data = [
-        (101, "Alice Smith", "2026-04-22", "In Progress", 150.00, 3),
-        (102, "Bob Jones", "2026-04-23", "Pending", 0.00, 0),
-        (103, "Charlie Davis", "2026-04-21", "Resolved", 450.50, 8)
+        (
+            1,                  # apartmentID
+            1,                  # tenantID
+            "Leaking sink",
+            "Kitchen sink is leaking under the cabinet.",
+            "High",
+            "In Progress",
+            "2026-04-22",
+            "10:00",
+            "Alice Smith",
+            "",
+            0.0,
+            0.0
+        ),
+        (
+            2,
+            2,
+            "Broken heater",
+            "Bedroom heater is not working.",
+            "Medium",
+            "Scheduled",
+            "2026-04-23",
+            "14:30",
+            "Bob Jones",
+            "",
+            0.0,
+            0.0
+        ),
+        (
+            3,
+            3,
+            "Window lock issue",
+            "Living room window lock is jammed.",
+            "Low",
+            "Resolved",
+            "2026-04-21",
+            "09:00",
+            "Charlie Davis",
+            "Lock repaired and tested.",
+            2.5,
+            85.50
+        )
     ]
 
     cursor.executemany("""
-        INSERT INTO maintenance_requests (complaint_id, staff_name, scheduled_date, status, cost, hours_spent)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO maintenance_requests (
+            apartmentID,
+            tenantID,
+            title,
+            description,
+            priority,
+            status,
+            scheduled_date,
+            scheduled_time,
+            assigned_staff,
+            resolution_note,
+            hours_spent,
+            cost
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, sample_data)
 
     conn.commit()
     conn.close()
     print("Database seeded with sample maintenance records!")
+
 
 if __name__ == "__main__":
     seed_database()
