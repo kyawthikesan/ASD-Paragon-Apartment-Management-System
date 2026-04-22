@@ -758,19 +758,9 @@ class DashboardView(tk.Frame):
         return any(token.startswith(query) for token in tokens)
 
     def _bind_search_handlers(self):
-        entry = getattr(self.shell, "search_entry", None)
-        if not entry:
-            return
-
-        def sync_search(_event=None):
-            self._filter_lease_table(entry.get())
-
-        # Update results on typing, enter, paste, or when the field loses focus.
-        entry.bind("<KeyRelease>", sync_search, add="+")
-        entry.bind("<Return>", sync_search, add="+")
-        entry.bind("<<Paste>>", sync_search, add="+")
-        entry.bind("<FocusOut>", sync_search, add="+")
-        self._start_search_watch()
+        # Search events are already handled by PremiumAppShell callbacks.
+        # Keeping extra bindings here causes duplicate filter calls and lag.
+        return
 
     def _start_search_watch(self):
         # Start a lightweight polling loop in case text changes without a key event.

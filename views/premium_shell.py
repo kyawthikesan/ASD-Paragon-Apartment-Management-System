@@ -74,6 +74,7 @@ class PremiumAppShell(ctk.CTkFrame):
         self._on_bell_click = on_bell_click
         self._on_settings_click = on_settings_click
         self._notification_count = notification_count
+        self._search_debounce_job = None
 
         self._brand_image = None
         self._icon_cache = {}
@@ -655,7 +656,10 @@ class PremiumAppShell(ctk.CTkFrame):
         h = root.winfo_height()
 
         width = 500
-        height = min(380, 220 + (len(rows) * 52))
+        # Fit content first, then cap to available root-window height.
+        desired_height = 220 + (len(rows) * 52)
+        max_height = max(320, h - 40)
+        height = min(desired_height, max_height)
 
         # Final centered position of the popup
         final_x = x + (w // 2) - (width // 2)
@@ -924,12 +928,27 @@ class PremiumAppShell(ctk.CTkFrame):
         self.after(60000, self._refresh_date)
 
     def _handle_search_change(self, event=None):
-        if callable(self._on_search_change):
-            self._on_search_change((self.search_entry.get() or "").strip())
+        if self._search_debounce_job:
+            try:
+                self.after_cancel(self._search_debounce_job)
+            except Exception:
+                pass
+        self._search_debounce_job = self.after(120, self._emit_search_change)
 
     def _handle_search_submit(self, event=None):
+        if self._search_debounce_job:
+            try:
+                self.after_cancel(self._search_debounce_job)
+            except Exception:
+                pass
+            self._search_debounce_job = None
         if callable(self._on_search_submit):
             self._on_search_submit((self.search_entry.get() or "").strip())
+
+    def _emit_search_change(self):
+        self._search_debounce_job = None
+        if callable(self._on_search_change):
+            self._on_search_change((self.search_entry.get() or "").strip())
 
     def _handle_bell_click(self):
         if callable(self._on_bell_click):

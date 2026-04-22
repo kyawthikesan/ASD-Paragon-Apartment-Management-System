@@ -193,19 +193,8 @@ class UserManagementView(ctk.CTkFrame):
             return default
 
     def _bind_search_handlers(self):
-        """Attach search entry events so the table updates while the user types."""
-        entry = getattr(self.shell, "search_entry", None)
-        if not entry:
-            return
-
-        def sync_search(_event=None):
-            self._on_search_change(entry.get())
-
-        entry.bind("<KeyRelease>", sync_search, add="+")
-        entry.bind("<Return>", sync_search, add="+")
-        entry.bind("<<Paste>>", sync_search, add="+")
-        entry.bind("<FocusOut>", sync_search, add="+")
-        self._start_search_watch()
+        """Search events are already handled by PremiumAppShell callbacks."""
+        return
 
     def _start_search_watch(self):
         """Starts a lightweight polling loop to detect programmatic search changes."""

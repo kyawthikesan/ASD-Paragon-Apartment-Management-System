@@ -820,9 +820,15 @@ class LoginView(tk.Frame):
 
             self.on_login_success(AuthController.get_current_role())
         else:
+            if message == "Incorrect password.":
+                error_icon = "incorrectpassword.png"
+            elif message == "User not found.":
+                error_icon = "user_not_found.png"
+            else:
+                error_icon = "signin.png"
             self._show_icon_modal(
                 title="Sign In Failed",
                 message=message,
-                icon_filename="signin.png",
+                icon_filename=error_icon,
                 icon_attr_name="signin_icon_image",
             )

@@ -1,5 +1,6 @@
 from database.db_manager import DBManager
 
+
 class TenantDAO:
 
     @staticmethod
@@ -7,10 +8,13 @@ class TenantDAO:
         conn = DBManager.get_connection()
         cursor = conn.cursor()
 
-        cursor.execute("""
+        cursor.execute(
+            """
         INSERT INTO tenants (name, NI_number, phone, email)
         VALUES (?, ?, ?, ?)
-        """, (name, NI_number, phone, email))
+        """,
+            (name, NI_number, phone, email),
+        )
 
         conn.commit()
         conn.close()
@@ -24,76 +28,101 @@ class TenantDAO:
             "NI_number": row[2],
             "phone": row[3],
             "email": row[4],
-            "lease_status": row[5]
+            "lease_status": row[5],
+            "apartmentID": row[6],
+            "apartment_type": row[7],
+            "city": row[8],
+            "start_date": row[9],
+            "end_date": row[10],
+            "rent": row[11],
         }
         cursor = conn.cursor()
 
-        lease_summary_sql = """
+        query = """
             SELECT
-                tenantID,
-                CASE
-                    WHEN SUM(CASE WHEN LOWER(TRIM(status)) = 'active' THEN 1 ELSE 0 END) > 0
-                        THEN 'Active'
-                    WHEN COUNT(*) > 0
-                        THEN MAX(status)
-                    ELSE 'No Lease'
-                END AS lease_status
-            FROM leases
-            GROUP BY tenantID
+                t.tenantID,
+                t.name,
+                t.NI_number,
+                t.phone,
+                t.email,
+                COALESCE(
+                    CASE
+                        WHEN LOWER(TRIM(l.status)) = 'active' THEN 'Active'
+                        WHEN TRIM(COALESCE(l.status, '')) = '' THEN 'No Lease'
+                        ELSE l.status
+                    END,
+                    'No Lease'
+                ) AS lease_status,
+                a.apartmentID,
+                a.type,
+                loc.city,
+                l.start_date,
+                l.end_date,
+                a.rent
+            FROM tenants t
+            LEFT JOIN leases l
+                ON l.leaseID = (
+                    SELECT l2.leaseID
+                    FROM leases l2
+                    LEFT JOIN apartments a2 ON l2.apartmentID = a2.apartmentID
+                    LEFT JOIN locations loc2 ON a2.location_id = loc2.location_id
+                    WHERE l2.tenantID = t.tenantID
+                    {city_filter_subquery}
+                    ORDER BY
+                        CASE WHEN LOWER(TRIM(l2.status)) = 'active' THEN 0 ELSE 1 END,
+                        DATE(COALESCE(l2.end_date, '9999-12-31')) DESC,
+                        l2.leaseID DESC
+                    LIMIT 1
+                )
+            LEFT JOIN apartments a ON l.apartmentID = a.apartmentID
+            LEFT JOIN locations loc ON a.location_id = loc.location_id
+            {city_filter_main}
+            ORDER BY t.tenantID DESC
         """
 
+        params = []
+        city_filter_subquery = ""
+        city_filter_main = ""
+
         if city:
-            cursor.execute(
-                """
-                SELECT
-                    t.tenantID,
-                    t.name,
-                    t.NI_number,
-                    t.phone,
-                    t.email,
-                    COALESCE(ls.lease_status, 'No Lease') AS lease_status
-                FROM tenants t
-                LEFT JOIN ({lease_summary}) ls ON t.tenantID = ls.tenantID
-                WHERE EXISTS (
-                    SELECT 1
-                    FROM leases l
-                    JOIN apartments a ON l.apartmentID = a.apartmentID
-                    LEFT JOIN locations loc ON a.location_id = loc.location_id
-                    WHERE l.tenantID = t.tenantID
-                    AND loc.city = ?
-                )
-                ORDER BY t.tenantID DESC
-                """.format(lease_summary=lease_summary_sql),
-                (city,),
+            city_filter_subquery = "AND loc2.city = ?"
+            city_filter_main = """
+            WHERE EXISTS (
+                SELECT 1
+                FROM leases l3
+                JOIN apartments a3 ON l3.apartmentID = a3.apartmentID
+                JOIN locations loc3 ON a3.location_id = loc3.location_id
+                WHERE l3.tenantID = t.tenantID
+                AND loc3.city = ?
             )
-        else:
-            cursor.execute("""
-                SELECT
-                    t.tenantID,
-                    t.name,
-                    t.NI_number,
-                    t.phone,
-                    t.email,
-                    COALESCE(ls.lease_status, 'No Lease') AS lease_status
-                FROM tenants t
-                LEFT JOIN ({lease_summary}) ls ON t.tenantID = ls.tenantID
-                ORDER BY t.tenantID DESC
-            """.format(lease_summary=lease_summary_sql))
+            """
+            params = [city, city]
+
+        cursor.execute(
+            query.format(
+                city_filter_subquery=city_filter_subquery,
+                city_filter_main=city_filter_main,
+            ),
+            tuple(params),
+        )
 
         rows = cursor.fetchall()
         conn.close()
         return rows
-    
+
     @staticmethod
     def update_tenant(tenant_id, name, NI_number, phone, email):
         conn = DBManager.get_connection()
         cursor = conn.cursor()
 
-        cursor.execute("""
+        cursor.execute(
+            """
         UPDATE tenants
         SET name=?, NI_number=?, phone=?, email=?
         WHERE tenantID=?
-        """, (name, NI_number, phone, email, tenant_id))
+        """,
+            (name, NI_number, phone, email, tenant_id),
+        )
 
         conn.commit()
         conn.close()
