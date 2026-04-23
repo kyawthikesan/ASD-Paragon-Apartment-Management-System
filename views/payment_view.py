@@ -11,12 +11,21 @@ from tkinter import ttk, messagebox, filedialog
 import csv
 from datetime import date, datetime, timedelta
 import customtkinter as ctk
+try:
+    from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+    from matplotlib.figure import Figure
+    MATPLOTLIB_AVAILABLE = True
+except Exception:
+    FigureCanvasTkAgg = None
+    Figure = None
+    MATPLOTLIB_AVAILABLE = False
 
 from dao.lease_dao import LeaseDAO
 from dao.invoice_dao import InvoiceDAO
 from dao.payment_dao import PaymentDAO
 from dao.report_dao import ReportDAO
 from dao.location_dao import LocationDAO
+from dao.maintenance_dao import MaintenanceDAO
 from controllers.auth_controller import AuthController
 from views.premium_shell import PremiumAppShell
 
@@ -99,10 +108,13 @@ class FinanceDashboardView(ttk.Frame):
 
         self.tab_switch_buttons = {}
         show_switches = len(self.enabled_tabs) > 1
+        self._show_switches = show_switches
+        self._compact_controls = None
         compact_controls = None
         if (show_switches and self.role != "finance") or self.is_admin:
             compact_controls = ctk.CTkFrame(layout_parent, fg_color="transparent", corner_radius=0)
             compact_controls.pack(fill="x", padx=12, pady=(8, 4))
+            self._compact_controls = compact_controls
 
         if show_switches:
             if self.role == "finance" and self.finance_banner_tabs is not None:
@@ -134,6 +146,7 @@ class FinanceDashboardView(ttk.Frame):
         if self.is_admin and compact_controls is not None:
             right_controls = ctk.CTkFrame(compact_controls, fg_color="transparent", corner_radius=0)
             right_controls.pack(side="right", padx=(0, 12))
+            self._admin_top_city_controls = right_controls
 
             city_options = ["All Cities"] + sorted(
                 {str(loc["city"]).strip() for loc in LocationDAO.get_all_locations() if str(loc["city"]).strip()}
@@ -239,6 +252,7 @@ class FinanceDashboardView(ttk.Frame):
         selected_name = self.initial_tab if self.initial_tab in tab_map else next(iter(tab_map))
         self._show_tab(selected_name)
         self._refresh_tab_switch_buttons(selected_name)
+        self._update_admin_city_filter_visibility(selected_name)
 
     def _tab_map(self):
         tab_map = {}
@@ -262,6 +276,34 @@ class FinanceDashboardView(ttk.Frame):
     def _select_tab_by_name(self, tab_name):
         self._show_tab(tab_name)
         self._refresh_tab_switch_buttons(tab_name)
+        self._update_admin_city_filter_visibility(tab_name)
+
+    def _update_admin_city_filter_visibility(self, active_tab_name):
+        compact_controls = getattr(self, "_compact_controls", None)
+        show_switches = bool(getattr(self, "_show_switches", False))
+        controls = getattr(self, "_admin_top_city_controls", None)
+        is_reports = str(active_tab_name).strip().lower() == "reports"
+
+        if controls is not None:
+            if is_reports:
+                controls.pack_forget()
+            else:
+                try:
+                    if not controls.winfo_manager():
+                        controls.pack(side="right", padx=(0, 12))
+                except Exception:
+                    pass
+
+        # If no tab-switch buttons are shown, collapse the now-empty row on Reports.
+        if compact_controls is not None and not show_switches:
+            if is_reports:
+                compact_controls.pack_forget()
+            else:
+                try:
+                    if not compact_controls.winfo_manager():
+                        compact_controls.pack(fill="x", padx=12, pady=(8, 4))
+                except Exception:
+                    pass
 
     def _refresh_tab_switch_buttons(self, active_tab_name):
         if not hasattr(self, "tab_switch_buttons"):
@@ -315,6 +357,14 @@ class FinanceDashboardView(ttk.Frame):
                         "icon": "payments",
                     }
                 )
+            elif self.role == "manager":
+                sections[2]["items"].append(
+                    {
+                        "label": "Reports",
+                        "action": self.open_finance_reports or self._go_reports,
+                        "icon": "reports",
+                    }
+                )
             else:
                 sections[2]["items"].append(
                     {
@@ -354,9 +404,11 @@ class FinanceDashboardView(ttk.Frame):
             except Exception:
                 self._search_query = ""
 
-        self._load_invoice_table()
-        self._load_payment_table()
-        if hasattr(self, "city_tree"):
+        if hasattr(self, "invoice_tree"):
+            self._load_invoice_table()
+        if hasattr(self, "payment_tree"):
+            self._load_payment_table()
+        if hasattr(self, "report_tab"):
             self._load_reports()
 
     def _matches_search(self, *values):
@@ -1375,92 +1427,251 @@ class FinanceDashboardView(ttk.Frame):
     # REPORT TAB
     # =========================
     def _build_report_tab(self):
-        """
-        Build overall summary, city summary, and late payment alert sections.
-        """
-        toolbar = ttk.Frame(self.report_tab)
-        toolbar.pack(fill="x", pady=(0, 10))
+        self.report_city_buttons = {}
+        self.report_city_filter_var = tk.StringVar(value="All Cities" if self.is_admin else (self.city_scope or "All Cities"))
+        self.report_occupancy_rate_var = tk.StringVar(value="0%")
+        self.report_occupancy_note_var = tk.StringVar(value="0 of 0 units occupied")
+        self.report_rent_var = tk.StringVar(value="£0")
+        self.report_rent_note_var = tk.StringVar(value="£0 pending this month")
+        self.report_maintenance_var = tk.StringVar(value="£0")
+        self.report_maintenance_note_var = tk.StringVar(value="Budget £8,000 - 0% used")
+        self.report_collected_box_var = tk.StringVar(value="£0")
+        self.report_pending_box_var = tk.StringVar(value="£0")
+        self.report_month_chart_canvas = None
 
-        ttk.Button(
-            toolbar,
-            text="Download CSV",
-            command=self.export_reports_csv
-        ).pack(side="right", padx=6)
+        report_scroll = ctk.CTkScrollableFrame(
+            self.report_tab,
+            fg_color="transparent",
+            corner_radius=0,
+            scrollbar_button_color="#D9C8AA",
+            scrollbar_button_hover_color="#CDB58E",
+        )
+        report_scroll.pack(fill="both", expand=True)
 
-        ttk.Button(
-            toolbar,
-            text="Download PDF",
-            command=self.export_reports_pdf
-        ).pack(side="right", padx=6)
-        summary_frame = ttk.LabelFrame(self.report_tab, text="Overall Financial Summary", padding=12)
-        summary_frame.pack(fill="x", pady=(0, 12))
+        top_actions = ctk.CTkFrame(report_scroll, fg_color="transparent", corner_radius=0)
+        top_actions.pack(fill="x", pady=(0, 10))
+        top_actions.grid_columnconfigure(0, weight=1)
+        top_actions.grid_columnconfigure(1, weight=0)
 
-        self.total_invoiced_var = tk.StringVar(value="0.00")
-        self.total_collected_var = tk.StringVar(value="0.00")
-        self.total_pending_var = tk.StringVar(value="0.00")
-        self.late_invoice_count_var = tk.StringVar(value="0")
+        self.report_city_chips = ctk.CTkFrame(top_actions, fg_color="transparent", corner_radius=0)
+        self.report_city_chips.grid(row=0, column=0, sticky="w")
 
-        ttk.Label(summary_frame, text="Total Invoiced:").grid(row=0, column=0, sticky="w", padx=6, pady=4)
-        ttk.Label(summary_frame, textvariable=self.total_invoiced_var).grid(row=0, column=1, sticky="w", padx=6, pady=4)
+        ctk.CTkButton(
+            top_actions,
+            text="Export PDF Report",
+            command=self.export_reports_pdf,
+            fg_color="#FCFAF6",
+            text_color="#26201A",
+            hover_color="#EFE5D3",
+            border_width=1,
+            border_color="#C8B79A",
+            corner_radius=16,
+            width=220,
+            height=54,
+            font=("Arial", 20, "bold"),
+        ).grid(row=0, column=1, sticky="e", padx=(12, 0))
 
-        ttk.Label(summary_frame, text="Total Collected:").grid(row=0, column=2, sticky="w", padx=6, pady=4)
-        ttk.Label(summary_frame, textvariable=self.total_collected_var).grid(row=0, column=3, sticky="w", padx=6, pady=4)
+        summary_row = ctk.CTkFrame(report_scroll, fg_color="transparent", corner_radius=0)
+        summary_row.pack(fill="x", pady=(0, 12))
+        for idx in range(3):
+            summary_row.grid_columnconfigure(idx, weight=1)
 
-        ttk.Label(summary_frame, text="Total Pending:").grid(row=1, column=0, sticky="w", padx=6, pady=4)
-        ttk.Label(summary_frame, textvariable=self.total_pending_var).grid(row=1, column=1, sticky="w", padx=6, pady=4)
+        self._build_report_metric_card(
+            summary_row,
+            0,
+            "OCCUPANCY RATE",
+            self.report_occupancy_rate_var,
+            self.report_occupancy_note_var,
+        )
+        self._build_report_metric_card(
+            summary_row,
+            1,
+            "RENT COLLECTED VS PENDING",
+            self.report_rent_var,
+            self.report_rent_note_var,
+        )
+        self._build_report_metric_card(
+            summary_row,
+            2,
+            "MAINTENANCE SPEND YTD",
+            self.report_maintenance_var,
+            self.report_maintenance_note_var,
+        )
 
-        ttk.Label(summary_frame, text="Late Invoices:").grid(row=1, column=2, sticky="w", padx=6, pady=4)
-        ttk.Label(summary_frame, textvariable=self.late_invoice_count_var).grid(row=1, column=3, sticky="w", padx=6, pady=4)
+        middle_row = ctk.CTkFrame(report_scroll, fg_color="transparent", corner_radius=0)
+        middle_row.pack(fill="x", pady=(0, 12))
+        middle_row.grid_columnconfigure(0, weight=5)
+        middle_row.grid_columnconfigure(1, weight=6)
 
-        city_frame = ttk.LabelFrame(self.report_tab, text="Financial Summary by City", padding=12)
-        city_frame.pack(fill="both", expand=True, pady=(0, 12))
+        collection_card = ctk.CTkFrame(middle_row, fg_color="#FCFAF6", corner_radius=16, border_width=1, border_color="#DDD0BB")
+        collection_card.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+        collection_card.grid_columnconfigure(0, weight=1)
 
-        city_columns = ("city", "total_invoiced", "total_collected", "total_pending", "late_invoice_count")
-        self.city_tree = ttk.Treeview(city_frame, columns=city_columns, show="headings", height=8)
+        header_left = ctk.CTkFrame(collection_card, fg_color="transparent", corner_radius=0, height=56)
+        header_left.grid(row=0, column=0, sticky="ew")
+        header_left.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(header_left, text="Monthly Rent Collection", text_color="#2B2418", font=("Arial", 18, "bold")).grid(row=0, column=0, sticky="w", padx=16, pady=(10, 6))
+        ctk.CTkLabel(header_left, text="Last 6 months", text_color="#9A7A2E", font=("Arial", 12, "bold")).grid(row=0, column=1, sticky="e", padx=18, pady=(12, 8))
+        ctk.CTkFrame(collection_card, fg_color="#E8DEC8", height=1, corner_radius=0).grid(row=1, column=0, sticky="ew")
 
-        self.city_tree.heading("city", text="City")
-        self.city_tree.heading("total_invoiced", text="Total Invoiced")
-        self.city_tree.heading("total_collected", text="Total Collected")
-        self.city_tree.heading("total_pending", text="Total Pending")
-        self.city_tree.heading("late_invoice_count", text="Late Invoices")
+        self.report_month_bar_container = ctk.CTkFrame(collection_card, fg_color="transparent", corner_radius=0)
+        self.report_month_bar_container.grid(row=2, column=0, sticky="ew", padx=12, pady=(8, 6))
 
-        self.city_tree.column("city", width=120)
-        self.city_tree.column("total_invoiced", width=130, anchor="e")
-        self.city_tree.column("total_collected", width=130, anchor="e")
-        self.city_tree.column("total_pending", width=130, anchor="e")
-        self.city_tree.column("late_invoice_count", width=100, anchor="center")
+        totals_row = ctk.CTkFrame(collection_card, fg_color="transparent", corner_radius=0)
+        totals_row.grid(row=3, column=0, sticky="ew", padx=12, pady=(0, 8))
+        totals_row.grid_columnconfigure(0, weight=1)
+        totals_row.grid_columnconfigure(1, weight=1)
+        collected_box = ctk.CTkFrame(totals_row, fg_color="#E4ECE3", corner_radius=12, height=72)
+        collected_box.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        ctk.CTkLabel(collected_box, text="Collected", text_color="#2F6C3B", font=("Arial", 10, "bold")).pack(anchor="w", padx=14, pady=(10, 1))
+        ctk.CTkLabel(collected_box, textvariable=self.report_collected_box_var, text_color="#2B2418", font=("Georgia", 24, "bold")).pack(anchor="w", padx=14, pady=(0, 8))
+        pending_box = ctk.CTkFrame(totals_row, fg_color="#EFE4E4", corner_radius=12, height=72)
+        pending_box.grid(row=0, column=1, sticky="ew", padx=(8, 0))
+        ctk.CTkLabel(pending_box, text="Pending", text_color="#9C2D2D", font=("Arial", 10, "bold")).pack(anchor="w", padx=14, pady=(10, 1))
+        ctk.CTkLabel(pending_box, textvariable=self.report_pending_box_var, text_color="#2B2418", font=("Georgia", 24, "bold")).pack(anchor="w", padx=14, pady=(0, 8))
 
-        self.city_tree.pack(side="left", fill="both", expand=True)
+        occupancy_card = ctk.CTkFrame(middle_row, fg_color="#FCFAF6", corner_radius=16, border_width=1, border_color="#DDD0BB")
+        occupancy_card.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
+        occupancy_card.grid_columnconfigure(0, weight=1)
+        head = ctk.CTkFrame(occupancy_card, fg_color="transparent", corner_radius=0, height=56)
+        head.grid(row=0, column=0, sticky="ew")
+        ctk.CTkLabel(head, text="Occupancy by City", text_color="#2B2418", font=("Arial", 20, "bold")).pack(side="left", padx=18, pady=(12, 8))
+        ctk.CTkFrame(occupancy_card, fg_color="#E8DEC8", height=1, corner_radius=0).grid(row=1, column=0, sticky="ew")
+        self.report_occupancy_list_container = ctk.CTkFrame(occupancy_card, fg_color="transparent", corner_radius=0)
+        self.report_occupancy_list_container.grid(row=2, column=0, sticky="ew", padx=14, pady=(8, 12))
 
-        city_scroll = ttk.Scrollbar(city_frame, orient="vertical", command=self.city_tree.yview)
-        self.city_tree.configure(yscrollcommand=city_scroll.set)
-        city_scroll.pack(side="right", fill="y")
+        maintenance_card = ctk.CTkFrame(report_scroll, fg_color="#FCFAF6", corner_radius=16, border_width=1, border_color="#DDD0BB")
+        maintenance_card.pack(fill="x", pady=(0, 8))
+        maintenance_card.grid_columnconfigure(0, weight=1)
+        m_head = ctk.CTkFrame(maintenance_card, fg_color="transparent", corner_radius=0, height=56)
+        m_head.grid(row=0, column=0, sticky="ew")
+        ctk.CTkLabel(m_head, text="Maintenance Cost Breakdown", text_color="#2B2418", font=("Arial", 20, "bold")).pack(side="left", padx=18, pady=(12, 8))
+        ctk.CTkLabel(m_head, text="YTD - Budget £8,000", text_color="#9A7A2E", font=("Arial", 12, "bold")).pack(side="right", padx=18, pady=(12, 8))
+        ctk.CTkFrame(maintenance_card, fg_color="#E8DEC8", height=1, corner_radius=0).grid(row=1, column=0, sticky="ew")
+        self.report_maintenance_list_container = ctk.CTkFrame(maintenance_card, fg_color="transparent", corner_radius=0)
+        self.report_maintenance_list_container.grid(row=2, column=0, sticky="ew", padx=16, pady=(8, 14))
 
-        late_frame = ttk.LabelFrame(self.report_tab, text="Late Payment Alerts", padding=12)
-        late_frame.pack(fill="both", expand=True)
+        self._rebuild_report_city_chips()
+        self._load_reports()
 
-        late_columns = ("invoiceID", "tenant_name", "city", "due_date", "amount_due", "outstanding_balance")
-        self.late_tree = ttk.Treeview(late_frame, columns=late_columns, show="headings", height=8)
+    def _build_report_metric_card(self, parent, col, title, value_var, note_var):
+        card = ctk.CTkFrame(parent, fg_color="#FCFAF6", corner_radius=16, border_width=1, border_color="#DDD0BB")
+        card.grid(row=0, column=col, sticky="nsew", padx=(0, 8) if col < 2 else 0)
+        ctk.CTkLabel(card, text=title, text_color="#8C7D63", font=("Arial", 11, "bold"), justify="left").pack(anchor="w", padx=16, pady=(10, 2))
+        ctk.CTkLabel(card, textvariable=value_var, text_color="#2B2418", font=("Georgia", 24, "bold")).pack(anchor="w", padx=16)
+        ctk.CTkLabel(card, textvariable=note_var, text_color="#8C7D63", font=("Arial", 10, "bold"), justify="left").pack(anchor="w", padx=16, pady=(0, 12))
 
-        self.late_tree.heading("invoiceID", text="Invoice ID")
-        self.late_tree.heading("tenant_name", text="Tenant")
-        self.late_tree.heading("city", text="City")
-        self.late_tree.heading("due_date", text="Due Date")
-        self.late_tree.heading("amount_due", text="Amount Due")
-        self.late_tree.heading("outstanding_balance", text="Outstanding")
+    def _rebuild_report_city_chips(self):
+        if not hasattr(self, "report_city_chips"):
+            return
+        for widget in self.report_city_chips.winfo_children():
+            widget.destroy()
+        self.report_city_buttons = {}
 
-        self.late_tree.column("invoiceID", width=90, anchor="center")
-        self.late_tree.column("tenant_name", width=160)
-        self.late_tree.column("city", width=120)
-        self.late_tree.column("due_date", width=100, anchor="center")
-        self.late_tree.column("amount_due", width=100, anchor="e")
-        self.late_tree.column("outstanding_balance", width=110, anchor="e")
+        if self.is_admin:
+            cities = sorted({str(loc["city"]).strip() for loc in LocationDAO.get_all_locations() if str(loc["city"]).strip()})
+            chip_values = cities + (["All Cities"] if "All Cities" not in cities else [])
+        else:
+            chip_values = [self.city_scope or "All Cities"]
+        if not chip_values:
+            chip_values = ["All Cities"]
 
-        self.late_tree.pack(side="left", fill="both", expand=True)
+        current = str(self.report_city_filter_var.get() or "").strip()
+        if current not in chip_values:
+            current = chip_values[0]
+            self.report_city_filter_var.set(current)
 
-        late_scroll = ttk.Scrollbar(late_frame, orient="vertical", command=self.late_tree.yview)
-        self.late_tree.configure(yscrollcommand=late_scroll.set)
-        late_scroll.pack(side="right", fill="y")
+        for city_name in chip_values:
+            btn = ctk.CTkButton(
+                self.report_city_chips,
+                text=city_name,
+                command=lambda city=city_name: self._set_report_city_filter(city),
+                fg_color="#FCFAF6",
+                text_color="#5D4D33",
+                hover_color="#E7D6B9",
+                border_width=1,
+                border_color="#D7C5A9",
+                width=max(92, len(city_name) * 9),
+                height=40,
+                corner_radius=20,
+                font=("Arial", 12, "bold"),
+            )
+            btn.pack(side="left", padx=(0, 8))
+            self.report_city_buttons[city_name] = btn
+
+        self._refresh_report_city_buttons()
+
+    def _refresh_report_city_buttons(self):
+        active = str(self.report_city_filter_var.get() or "").strip()
+        for city_name, btn in self.report_city_buttons.items():
+            is_active = city_name == active
+            btn.configure(
+                fg_color="#C9A84C" if is_active else "#FCFAF6",
+                text_color="#2A2317" if is_active else "#5D4D33",
+                hover_color="#B8923E" if is_active else "#E7D6B9",
+                border_width=0 if is_active else 1,
+                border_color="#C9A84C" if is_active else "#D7C5A9",
+            )
+
+    def _set_report_city_filter(self, city_name):
+        self.report_city_filter_var.set(city_name)
+        self._refresh_report_city_buttons()
+        self._load_reports()
+
+    @staticmethod
+    def _format_report_money(value):
+        amount = float(value or 0)
+        if abs(amount) >= 1000:
+            return f"£{amount / 1000:.1f}k"
+        return f"£{amount:,.0f}"
+
+    def _effective_report_city_scope(self):
+        if hasattr(self, "report_city_filter_var"):
+            selected = str(self.report_city_filter_var.get() or "").strip()
+        else:
+            selected = "All Cities" if self.is_admin else (self.city_scope or "All Cities")
+        if self.is_admin:
+            if selected and selected.lower() not in {"all cities", "all"}:
+                return selected
+            return None
+        return self.city_scope
+
+    def _build_report_monthly_series(self, payments):
+        today = date.today()
+        buckets = []
+        for offset in range(5, -1, -1):
+            month_num = today.month - offset
+            year_num = today.year
+            while month_num <= 0:
+                month_num += 12
+                year_num -= 1
+            key = f"{year_num:04d}-{month_num:02d}"
+            buckets.append({"key": key, "label": datetime(year_num, month_num, 1).strftime("%b"), "total": 0.0})
+
+        bucket_map = {row["key"]: row for row in buckets}
+        for payment in payments:
+            pay_date_text = str(payment.get("payment_date", "")).strip()
+            try:
+                parsed = datetime.strptime(pay_date_text, "%Y-%m-%d")
+            except ValueError:
+                continue
+            key = parsed.strftime("%Y-%m")
+            if key in bucket_map:
+                bucket_map[key]["total"] += float(payment.get("amount_paid", 0) or 0)
+        return buckets
+
+    @staticmethod
+    def _categorise_maintenance(title_text):
+        text = str(title_text or "").strip().lower()
+        if any(token in text for token in ("plumb", "pipe", "leak", "drain")):
+            return "Plumbing"
+        if any(token in text for token in ("elect", "socket", "light", "wiring")):
+            return "Electrical"
+        if any(token in text for token in ("hvac", "heat", "air", "boiler", "cool")):
+            return "Heating / HVAC"
+        if any(token in text for token in ("window", "wall", "struct", "door")):
+            return "Structural / Windows"
+        return "General"
         # =========================
     # REFRESH EVERYTHING
     # =========================
@@ -1476,7 +1687,7 @@ class FinanceDashboardView(ttk.Frame):
             self._load_open_invoice_options()
         if hasattr(self, "payment_tree"):
             self._load_payment_table()
-        if hasattr(self, "city_tree"):
+        if hasattr(self, "report_tab"):
             self._load_reports()
 
     # =========================
@@ -1733,68 +1944,134 @@ class FinanceDashboardView(ttk.Frame):
     # LOAD REPORTS
     # =========================
     def _load_reports(self):
-        """
-        Refresh summary values and report tables.
-        """
-        summary = ReportDAO.get_overall_financial_summary(city=self.city_scope)
-        self.total_invoiced_var.set(f"{float(summary['total_invoiced']):.2f}")
-        self.total_collected_var.set(f"{float(summary['total_collected']):.2f}")
-        self.total_pending_var.set(f"{float(summary['total_pending']):.2f}")
-        self.late_invoice_count_var.set(str(summary["late_invoice_count"]))
+        city_scope = self._effective_report_city_scope()
+        summary = ReportDAO.get_overall_financial_summary(city=city_scope)
+        occupancy_rows = ReportDAO.get_occupancy_report_by_city()
+        if city_scope:
+            occupancy_rows = [row for row in occupancy_rows if str(row.get("city", "")).strip() == city_scope]
 
-        for item in self.city_tree.get_children():
-            self.city_tree.delete(item)
+        payments = PaymentDAO.get_all_payments(city=city_scope)
+        monthly = self._build_report_monthly_series(payments)
+        total_cost, _total_hours, _resolved_count = MaintenanceDAO.get_cost_report_data(city=city_scope)
+        maintenance_requests = MaintenanceDAO.get_all_requests(city=city_scope)
 
-        city_rows = ReportDAO.get_financial_summary_by_city()
-        if self.city_scope:
-            city_rows = [row for row in city_rows if str(row.get("city", "")).strip() == self.city_scope]
-        for row in city_rows:
-            if not self._matches_search(
-                row.get("city"),
-                row.get("total_invoiced"),
-                row.get("total_collected"),
-                row.get("total_pending"),
-                row.get("late_invoice_count"),
-            ):
-                continue
-            self.city_tree.insert(
-                "",
-                "end",
-                values=(
-                    row["city"],
-                    f"{float(row['total_invoiced']):.2f}",
-                    f"{float(row['total_collected']):.2f}",
-                    f"{float(row['total_pending']):.2f}",
-                    row["late_invoice_count"]
-                )
-            )
+        occupied_total = sum(int(row.get("occupied_apartments", 0) or 0) for row in occupancy_rows)
+        apartments_total = sum(int(row.get("total_apartments", 0) or 0) for row in occupancy_rows)
+        occ_rate = (occupied_total / apartments_total * 100) if apartments_total else 0
 
-        for item in self.late_tree.get_children():
-            self.late_tree.delete(item)
+        self.report_occupancy_rate_var.set(f"{occ_rate:.1f}%")
+        self.report_occupancy_note_var.set(f"{occupied_total} of {apartments_total} units occupied")
+        self.report_rent_var.set(self._format_report_money(summary["total_collected"]))
+        self.report_rent_note_var.set(f"{self._format_report_money(summary['total_pending'])} still pending this month")
+        self.report_maintenance_var.set(self._format_report_money(total_cost))
+        budget = 8000.0
+        used_pct = min(100, (total_cost / budget * 100) if budget else 0)
+        self.report_maintenance_note_var.set(f"Budget £8,000 - {used_pct:.0f}% used")
+        self.report_collected_box_var.set(f"£{float(summary['total_collected']):,.0f}")
+        self.report_pending_box_var.set(f"£{float(summary['total_pending']):,.0f}")
 
-        late_rows = ReportDAO.get_late_invoices(city=self.city_scope)
-        for row in late_rows:
-            if not self._matches_search(
-                row.get("invoiceID"),
-                row.get("tenant_name"),
-                row.get("city"),
-                row.get("due_date"),
-                row.get("amount_due"),
-                row.get("outstanding_balance"),
-            ):
-                continue
-            self.late_tree.insert(
-                "",
-                "end",
-                values=(
-                    row["invoiceID"],
-                    row["tenant_name"],
-                    row["city"],
-                    self._to_display_date(row.get("due_date", "")),
-                    f"{float(row['amount_due']):.2f}",
-                    f"{float(row['outstanding_balance']):.2f}"
-                )
-            )
+        if hasattr(self, "report_month_bar_container"):
+            for widget in self.report_month_bar_container.winfo_children():
+                widget.destroy()
+            if self.report_month_chart_canvas is not None:
+                try:
+                    self.report_month_chart_canvas.get_tk_widget().destroy()
+                except Exception:
+                    pass
+                self.report_month_chart_canvas = None
+
+            if MATPLOTLIB_AVAILABLE and Figure is not None and FigureCanvasTkAgg is not None:
+                labels = [row["label"] for row in monthly]
+                values = [float(row["total"] or 0) for row in monthly]
+                colors = ["#D7C690"] * max(0, len(values) - 1) + ["#C9A84C"] if values else ["#C9A84C"]
+
+                fig = Figure(figsize=(4.4, 2.0), dpi=120)
+                ax = fig.add_subplot(111)
+                fig.patch.set_facecolor("#FCFAF6")
+                ax.set_facecolor("#FCFAF6")
+                bars = ax.bar(labels, values, color=colors, width=0.78, linewidth=0)
+                for bar in bars:
+                    bar.set_linewidth(0)
+
+                ax.spines["top"].set_visible(False)
+                ax.spines["left"].set_visible(False)
+                ax.spines["right"].set_visible(False)
+                ax.spines["bottom"].set_color("#E8DEC8")
+                ax.tick_params(axis="x", colors="#8C7D63", labelsize=10, length=0)
+                ax.tick_params(axis="y", length=0, labelleft=False)
+                ymax = max(values) * 1.25 if values and max(values) > 0 else 1
+                ax.set_ylim(0, ymax)
+                ax.set_yticks([])
+                fig.tight_layout(pad=0.6)
+
+                self.report_month_chart_canvas = FigureCanvasTkAgg(fig, master=self.report_month_bar_container)
+                self.report_month_chart_canvas.draw()
+                self.report_month_chart_canvas.get_tk_widget().pack(fill="x", expand=True)
+            else:
+                ctk.CTkLabel(
+                    self.report_month_bar_container,
+                    text="Chart unavailable (matplotlib missing)",
+                    text_color="#8C7D63",
+                    font=("Arial", 10, "bold"),
+                ).pack(anchor="w")
+
+        if hasattr(self, "report_occupancy_list_container"):
+            for widget in self.report_occupancy_list_container.winfo_children():
+                widget.destroy()
+            filtered_rows = []
+            for row in occupancy_rows:
+                if self._matches_search(row.get("city"), row.get("occupied_apartments"), row.get("total_apartments")):
+                    filtered_rows.append(row)
+            for row in filtered_rows[:6]:
+                city_name = str(row.get("city", "Unknown"))
+                occupied = int(row.get("occupied_apartments", 0) or 0)
+                total = int(row.get("total_apartments", 0) or 0)
+                pct = int(round(float(row.get("occupancy_rate", 0) or 0)))
+                line = ctk.CTkFrame(self.report_occupancy_list_container, fg_color="transparent", corner_radius=0)
+                line.pack(fill="x", pady=(2, 8))
+                line.grid_columnconfigure(0, weight=0)
+                line.grid_columnconfigure(1, weight=1)
+                line.grid_columnconfigure(2, weight=0)
+                ctk.CTkLabel(line, text=city_name, text_color="#5C4D34", font=("Arial", 11, "bold")).grid(row=0, column=0, sticky="w")
+                ctk.CTkLabel(line, text=f"{pct}%", text_color="#5C4D34", font=("Arial", 11, "bold")).grid(row=0, column=2, sticky="e", padx=(8, 0))
+                progress = ctk.CTkProgressBar(line, height=10, corner_radius=8, progress_color="#C9A84C", fg_color="#E2D9CB")
+                progress.grid(row=0, column=1, sticky="ew", padx=10)
+                progress.set(max(0.0, min(1.0, pct / 100.0)))
+                ctk.CTkLabel(line, text=f"{occupied} / {total} units", text_color="#8C7D63", font=("Arial", 10, "bold")).grid(row=1, column=1, sticky="w", pady=(2, 0))
+
+        if hasattr(self, "report_maintenance_list_container"):
+            for widget in self.report_maintenance_list_container.winfo_children():
+                widget.destroy()
+            category_totals = {
+                "Plumbing": 0.0,
+                "Electrical": 0.0,
+                "Heating / HVAC": 0.0,
+                "Structural / Windows": 0.0,
+                "General": 0.0,
+            }
+            for request in maintenance_requests:
+                if str(request.get("status", "")).strip().lower() != "resolved":
+                    continue
+                amount = float(request.get("cost", 0) or 0)
+                if amount <= 0:
+                    continue
+                category = self._categorise_maintenance(request.get("title", ""))
+                if not self._matches_search(category, request.get("title", ""), request.get("description", "")):
+                    continue
+                category_totals[category] += amount
+
+            maintenance_rows = [(k, v) for k, v in category_totals.items() if v > 0]
+            if not maintenance_rows:
+                maintenance_rows = [("General", total_cost)]
+            max_cost = max((row[1] for row in maintenance_rows), default=1.0) or 1.0
+            for category, amount in maintenance_rows:
+                row_frame = ctk.CTkFrame(self.report_maintenance_list_container, fg_color="transparent", corner_radius=0)
+                row_frame.pack(fill="x", pady=(2, 10))
+                ctk.CTkLabel(row_frame, text=category, text_color="#5C4D34", font=("Arial", 12, "bold")).pack(side="left")
+                ctk.CTkLabel(row_frame, text=f"£{amount:,.0f}", text_color="#2B2418", font=("Arial", 12, "bold")).pack(side="right")
+                progress = ctk.CTkProgressBar(row_frame, height=10, corner_radius=8, progress_color="#C9A84C", fg_color="#E2D9CB")
+                progress.pack(fill="x", padx=(300, 70), pady=(4, 0))
+                progress.set(max(0.0, min(1.0, amount / max_cost)))
 
     # =========================
     # LEASE SELECTION HANDLER
@@ -2049,9 +2326,12 @@ class FinanceDashboardView(ttk.Frame):
         if not path:
             return
 
-        summary = ReportDAO.get_overall_financial_summary()
+        city_scope = self._effective_report_city_scope()
+        summary = ReportDAO.get_overall_financial_summary(city=city_scope)
         city_rows = ReportDAO.get_financial_summary_by_city()
-        late_rows = ReportDAO.get_late_invoices()
+        if city_scope:
+            city_rows = [row for row in city_rows if str(row.get("city", "")).strip() == city_scope]
+        late_rows = ReportDAO.get_late_invoices(city=city_scope)
 
         with open(path, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
@@ -2109,9 +2389,12 @@ class FinanceDashboardView(ttk.Frame):
         if not path:
             return
 
-        summary = ReportDAO.get_overall_financial_summary()
+        city_scope = self._effective_report_city_scope()
+        summary = ReportDAO.get_overall_financial_summary(city=city_scope)
         city_rows = ReportDAO.get_financial_summary_by_city()
-        late_rows = ReportDAO.get_late_invoices()
+        if city_scope:
+            city_rows = [row for row in city_rows if str(row.get("city", "")).strip() == city_scope]
+        late_rows = ReportDAO.get_late_invoices(city=city_scope)
 
         pdf = FPDF()
         pdf.set_auto_page_break(auto=True, margin=12)

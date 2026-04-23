@@ -176,6 +176,14 @@ class UserManagementView(ctk.CTkFrame):
                         "icon": "payments",
                     }
                 )
+            elif role_key == "manager":
+                finance_items.append(
+                    {
+                        "label": "Reports",
+                        "action": self.open_finance_reports,
+                        "icon": "reports",
+                    }
+                )
             else:
                 finance_items.extend(
                     [

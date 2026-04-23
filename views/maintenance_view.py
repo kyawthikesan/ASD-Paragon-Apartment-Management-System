@@ -90,6 +90,7 @@ class MaintenanceDashboardView(ttk.Frame):
         self.priority_combo = None
         self.schedule_priority_var = tk.StringVar(value="Medium")
         self.status_filter_var = tk.StringVar(value="All Statuses")
+        self._search_query = ""
         self.request_rows_by_id = {}
         self.all_request_rows = []
         self._request_col_weights = (0, 1, 4, 2, 2, 3, 3, 2, 2)
@@ -127,6 +128,8 @@ class MaintenanceDashboardView(ttk.Frame):
             footer_action_label="Logout" if self._is_maintenance_role else ("Back to Dashboard" if self.home_callback else "Logout"),
             search_placeholder="Search maintenance requests...",
             location_label=AuthController.get_current_location(),
+            on_search_change=self._on_shell_search,
+            on_search_submit=self._on_shell_search,
             on_bell_click=self._show_alerts,
             on_settings_click=self._show_settings,
             notification_count=self._initial_notification_count(),
@@ -199,6 +202,10 @@ class MaintenanceDashboardView(ttk.Frame):
                 finance_action = self.open_finance_payments or self.open_finance_reports
                 nav_sections[2]["items"].append(
                     {"label": "Payments & Reports", "action": finance_action, "icon": "payments"}
+                )
+            elif role_key == "manager":
+                nav_sections[2]["items"].append(
+                    {"label": "Reports", "action": self.open_finance_reports, "icon": "reports"}
                 )
             else:
                 nav_sections[2]["items"].extend(
@@ -2225,12 +2232,58 @@ class MaintenanceDashboardView(ttk.Frame):
 
     def _get_filtered_rows(self):
         selected_status = self.status_filter_var.get().strip().lower()
-        if selected_status in ("", "all statuses"):
-            return list(self.all_request_rows)
-        return [
-            row for row in self.all_request_rows
-            if str(row.get("status", "")).strip().lower() == selected_status
-        ]
+        filtered_rows = list(self.all_request_rows)
+
+        if selected_status not in ("", "all statuses"):
+            filtered_rows = [
+                row for row in filtered_rows
+                if str(row.get("status", "")).strip().lower() == selected_status
+            ]
+
+        query = str(getattr(self, "_search_query", "") or "").strip().lower()
+        if not query:
+            return filtered_rows
+
+        results = []
+        for row in filtered_rows:
+            scheduled_date = str(row.get("scheduled_date", "") or "").strip()
+            scheduled_time = str(row.get("scheduled_time", "") or "").strip()
+            scheduled_display = " ".join(part for part in (scheduled_date, scheduled_time) if part).strip()
+            request_id = row.get("requestID", "")
+            request_id_label = ""
+            if request_id not in ("", None):
+                try:
+                    request_id_label = f"MNT-{int(request_id):04d}"
+                except (TypeError, ValueError):
+                    request_id_label = str(request_id)
+
+            haystack = " ".join(
+                [
+                    str(row.get("title", "") or ""),
+                    str(row.get("description", "") or ""),
+                    str(row.get("priority", "") or ""),
+                    str(row.get("status", "") or ""),
+                    str(row.get("assigned_staff", "") or ""),
+                    str(row.get("tenant_name", "") or ""),
+                    str(row.get("apartmentID", "") or ""),
+                    str(row.get("cost", "") or ""),
+                    str(row.get("hours_spent", "") or ""),
+                    str(scheduled_display or ""),
+                    request_id_label,
+                ]
+            ).lower()
+
+            if query in haystack:
+                results.append(row)
+
+        return results
+
+    def _on_shell_search(self, query=None):
+        if isinstance(query, str):
+            self._search_query = query.strip()
+        else:
+            self._search_query = ""
+        self.apply_request_filter()
 
     def apply_request_filter(self, _event=None):
         if self.request_list_body is not None and self.request_list_body.winfo_exists():

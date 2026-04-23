@@ -111,12 +111,21 @@ class DashboardView(tk.Frame):
             )
 
         if AuthController.can_access_feature("finance_dashboard", self.role):
-            if str(self.role or "").strip().lower() == "finance":
+            role_key = str(self.role or "").strip().lower()
+            if role_key == "finance":
                 nav_sections[2]["items"].append(
                     {
                         "label": "Payments & Reports",
                         "action": self.open_finance_dashboard,
                         "icon": "payments",
+                    }
+                )
+            elif role_key == "manager":
+                nav_sections[2]["items"].append(
+                    {
+                        "label": "Reports",
+                        "action": self.open_finance_reports,
+                        "icon": "reports",
                     }
                 )
             else:
