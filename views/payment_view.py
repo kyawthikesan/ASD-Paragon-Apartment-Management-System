@@ -1,6 +1,11 @@
 # Student Name: Kyaw Thike (oliver) San
 # Student ID: 25014001
 # Module: UFCF8S-30-2 Advanced Software Development
+
+# Student Name: Shune Pyae Pyae (Evelyn) Aung
+# Student ID: 24028257
+# Module: UFCF8S-30-2 Advanced Software Development
+
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import csv
@@ -67,82 +72,92 @@ class FinanceDashboardView(ttk.Frame):
     # =========================
     def _build_layout(self):
         content_parent = self
-        if self.role in {"admin", "manager"}:
+        self.finance_banner_tabs = None
+        if self.role in {"admin", "manager", "finance"}:
             active_nav = "Reports" if str(self.initial_tab).strip().lower() == "reports" else "Payments"
+            hide_sidebar = self.role == "finance"
             self.shell = PremiumAppShell(
                 self,
                 page_title="Payments & Reports",
-                on_logout=self.home_callback or self.logout_callback,
+                on_logout=(self.logout_callback or self.home_callback) if hide_sidebar else (self.home_callback or self.logout_callback),
                 active_nav=active_nav,
                 nav_sections=self._build_nav_sections(),
-                footer_action_label="Back to Dashboard" if self.home_callback else "Logout",
+                footer_action_label="Logout" if hide_sidebar else ("Back to Dashboard" if self.home_callback else "Logout"),
                 search_placeholder="Search invoices and receipts...",
                 location_label=AuthController.get_current_location(),
                 on_search_change=self._on_shell_search,
                 on_search_submit=self._on_shell_search,
                 on_bell_click=self._show_alerts,
                 on_settings_click=self._show_settings,
+                hide_sidebar=hide_sidebar,
             )
             content_parent = self.shell.content
 
         layout_parent = self if content_parent is self else content_parent
+        if self.role == "finance" and hasattr(self, "shell"):
+            self._build_finance_identity_banner(layout_parent)
+
         self.tab_switch_buttons = {}
         show_switches = len(self.enabled_tabs) > 1
-        if show_switches or self.is_admin:
+        compact_controls = None
+        if (show_switches and self.role != "finance") or self.is_admin:
             compact_controls = ctk.CTkFrame(layout_parent, fg_color="transparent", corner_radius=0)
             compact_controls.pack(fill="x", padx=12, pady=(8, 4))
 
-            if show_switches:
+        if show_switches:
+            if self.role == "finance" and self.finance_banner_tabs is not None:
+                left_controls = self.finance_banner_tabs
+            else:
                 left_controls = ctk.CTkFrame(compact_controls, fg_color="transparent", corner_radius=0)
                 left_controls.pack(side="left")
 
-                for tab_name in ("Invoices", "Payments", "Reports"):
-                    if tab_name not in self.enabled_tabs:
-                        continue
-                    btn = ctk.CTkButton(
-                        left_controls,
-                        text=tab_name,
-                        command=lambda target=tab_name: self._select_tab_by_name(target),
-                        fg_color="#FCFAF6",
-                        text_color="#4E3E24",
-                        hover_color="#E7D6B9",
-                        border_width=1,
-                        border_color="#D7C5A9",
-                        height=30,
-                        width=96,
-                        corner_radius=14,
-                        font=("Arial", 12, "bold"),
-                    )
-                    btn.pack(side="left", padx=(0, 8))
-                    self.tab_switch_buttons[tab_name] = btn
-
-            if self.is_admin:
-                right_controls = ctk.CTkFrame(compact_controls, fg_color="transparent", corner_radius=0)
-                right_controls.pack(side="right", padx=(0, 12))
-
-                city_options = ["All Cities"] + sorted(
-                    {str(loc["city"]).strip() for loc in LocationDAO.get_all_locations() if str(loc["city"]).strip()}
+            for tab_name in ("Invoices", "Payments", "Reports"):
+                if tab_name not in self.enabled_tabs:
+                    continue
+                btn = ctk.CTkButton(
+                    left_controls,
+                    text=tab_name,
+                    command=lambda target=tab_name: self._select_tab_by_name(target),
+                    fg_color="#FCFAF6",
+                    text_color="#4E3E24",
+                    hover_color="#E7D6B9",
+                    border_width=1,
+                    border_color="#D7C5A9",
+                    height=40,
+                    width=112,
+                    corner_radius=18,
+                    font=("Arial", 13, "bold"),
                 )
-                default_city = self.selected_city if self.selected_city in city_options else "All Cities"
-                self.city_filter_var = tk.StringVar(value=default_city)
-                self.city_filter_menu = ctk.CTkOptionMenu(
-                    right_controls,
-                    values=city_options,
-                    variable=self.city_filter_var,
-                    command=self._on_city_filter_change,
-                    width=180,
-                    height=30,
-                    corner_radius=12,
-                    fg_color="#EFE5D3",
-                    button_color="#D9C8AA",
-                    button_hover_color="#CDB58E",
-                    text_color="#3A3123",
-                    dropdown_fg_color="#FCFAF6",
-                    dropdown_hover_color="#EFE5D3",
-                    dropdown_text_color="#3A3123",
-                    font=("Arial", 12, "bold"),
-                )
-                self.city_filter_menu.pack(side="left", padx=(0, 0), pady=0)
+                btn.pack(side="left", padx=(0, 8))
+                self.tab_switch_buttons[tab_name] = btn
+
+        if self.is_admin and compact_controls is not None:
+            right_controls = ctk.CTkFrame(compact_controls, fg_color="transparent", corner_radius=0)
+            right_controls.pack(side="right", padx=(0, 12))
+
+            city_options = ["All Cities"] + sorted(
+                {str(loc["city"]).strip() for loc in LocationDAO.get_all_locations() if str(loc["city"]).strip()}
+            )
+            default_city = self.selected_city if self.selected_city in city_options else "All Cities"
+            self.city_filter_var = tk.StringVar(value=default_city)
+            self.city_filter_menu = ctk.CTkOptionMenu(
+                right_controls,
+                values=city_options,
+                variable=self.city_filter_var,
+                command=self._on_city_filter_change,
+                width=180,
+                height=30,
+                corner_radius=12,
+                fg_color="#EFE5D3",
+                button_color="#D9C8AA",
+                button_hover_color="#CDB58E",
+                text_color="#3A3123",
+                dropdown_fg_color="#FCFAF6",
+                dropdown_hover_color="#EFE5D3",
+                dropdown_text_color="#3A3123",
+                font=("Arial", 12, "bold"),
+            )
+            self.city_filter_menu.pack(side="left", padx=(0, 0), pady=0)
 
         self.tab_container = ctk.CTkFrame(layout_parent, fg_color="transparent", corner_radius=0)
         self.tab_container.pack(fill="both", expand=True, padx=12, pady=(0, 12))
@@ -158,6 +173,63 @@ class FinanceDashboardView(ttk.Frame):
         if "Reports" in self.enabled_tabs:
             self.report_tab = ctk.CTkFrame(self.tab_container, fg_color="transparent", corner_radius=0)
             self._build_report_tab()
+
+    def _build_finance_identity_banner(self, parent):
+        user_row = AuthController.current_user
+        full_name = "Finance Staff"
+        location_name = AuthController.get_current_location() or "All Cities"
+        try:
+            if user_row and user_row["full_name"]:
+                full_name = str(user_row["full_name"]).strip()
+        except Exception:
+            full_name = "Finance Staff"
+
+        hello_name = full_name.split()[0] if full_name else "Finance"
+        office_text = str(location_name).strip() or "All Cities"
+        if office_text.lower() not in {"all cities", "all locations"} and not office_text.lower().endswith("office"):
+            office_text = f"{office_text} Office"
+
+        banner = ctk.CTkFrame(
+            parent,
+            fg_color="#1F1A12",
+            corner_radius=18,
+            border_width=1,
+            border_color="#312817",
+            height=118,   
+        )
+        banner.pack(fill="x", padx=12, pady=(8, 4))
+        banner.pack_propagate(False)
+
+        inner = ctk.CTkFrame(banner, fg_color="transparent", corner_radius=0)
+        inner.pack(fill="both", expand=True, padx=20, pady=14)
+        inner.grid_columnconfigure(0, weight=1)
+        inner.grid_columnconfigure(1, weight=0)
+        inner.grid_rowconfigure(0, weight=1)
+
+        left_box = ctk.CTkFrame(inner, fg_color="transparent", corner_radius=0)
+        left_box.grid(row=0, column=0, sticky="w")
+
+        ctk.CTkLabel(
+            left_box,
+            text=f"Good morning, {hello_name} ✨",
+            text_color="#D4AF4D",
+            font=("Georgia", 22, "bold"),
+            anchor="w",
+        ).pack(anchor="w", pady=(0, 8))   # more space between title and subtitle
+
+        self.finance_banner_tabs = ctk.CTkFrame(inner, fg_color="transparent", corner_radius=0)
+        self.finance_banner_tabs.grid(row=0, column=1, sticky="e")
+
+        # keep the right-side buttons centered vertically
+        self.finance_banner_tabs.grid_rowconfigure(0, weight=1)
+
+        ctk.CTkLabel(
+            banner,
+            text=f"{office_text} - Finance Team",
+            text_color="#D8C7A8",
+            font=("Arial", 14, "bold"),
+            anchor="w",
+        ).pack(anchor="w", padx=18, pady=(0, 12))
 
     def _select_initial_tab(self):
         tab_map = self._tab_map()
