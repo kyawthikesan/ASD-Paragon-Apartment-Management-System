@@ -104,13 +104,29 @@ class LeaseView(tk.Frame):
         ]
 
         if AuthController.can_access_feature("finance_dashboard", self.role):
-            nav_sections[2]["items"].append(
-                {
-                    "label": "Payments & Reports",
-                    "action": self.open_finance_payments,
-                    "icon": "payments",
-                }
-            )
+            if str(self.role or "").strip().lower() == "finance":
+                nav_sections[2]["items"].append(
+                    {
+                        "label": "Payments & Reports",
+                        "action": self.open_finance_payments,
+                        "icon": "payments",
+                    }
+                )
+            else:
+                nav_sections[2]["items"].extend(
+                    [
+                        {
+                            "label": "Payments",
+                            "action": self.open_finance_payments,
+                            "icon": "payments",
+                        },
+                        {
+                            "label": "Reports",
+                            "action": self.open_finance_reports,
+                            "icon": "reports",
+                        },
+                    ]
+                )
         if AuthController.can_access_feature("maintenance_management", self.role):
             nav_sections[1]["items"].append(
                 {

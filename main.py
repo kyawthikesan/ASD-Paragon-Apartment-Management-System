@@ -233,12 +233,22 @@ class PAMSApp(tk.Tk):
             "Finance Dashboard",
             initial_tab=initial_tab,
             visible_tabs=visible_tabs,
+            open_tenant_management=self.show_tenant_management,
+            open_apartment_management=self.show_apartment_management,
+            open_lease_management=self.show_lease_management,
+            open_finance_payments=self.show_finance_payments,
+            open_finance_reports=self.show_finance_reports,
+            open_user_management=self.show_user_management,
+            open_maintenance_dashboard=self.show_maintenance_dashboard,
         )
 
     def show_finance_payments(self):
         role = str(AuthController.get_current_role() or "").strip().lower()
         if role == "manager":
             self.show_finance_reports()
+            return
+        if role == "finance":
+            self.show_finance_dashboard()
             return
         self.show_finance_dashboard("Payments", visible_tabs=("Invoices", "Payments"))
 

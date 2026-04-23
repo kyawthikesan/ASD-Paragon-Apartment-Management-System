@@ -731,7 +731,14 @@ class PremiumAppShell(ctk.CTkFrame):
 
         width = 500
         # Fit content first, then cap to available root-window height.
-        desired_height = 220 + (len(rows) * 52)
+        row_units = 0
+        for label_text, value_text in rows:
+            value_lines = max(1, str(value_text or "").count("\n") + 1)
+            if str(label_text or "").strip():
+                row_units += max(1, value_lines)
+            else:
+                row_units += max(2, value_lines)
+        desired_height = 220 + (row_units * 36)
         max_height = max(320, h - 40)
         height = min(desired_height, max_height)
 
@@ -875,23 +882,25 @@ class PremiumAppShell(ctk.CTkFrame):
 
         # Build each info row
         for label_text, value_text in rows:
+            has_label = bool(str(label_text or "").strip())
+            value_lines = max(1, str(value_text or "").count("\n") + 1)
+            row_height = max(38, 18 + (value_lines * 20))
+            if not has_label:
+                row_height = max(row_height, 64)
+
             row_card = ctk.CTkFrame(
                 content_wrap,
                 fg_color="#F1ECE3",
                 corner_radius=14,
                 border_width=1,
                 border_color="#E1D6C5",
-                height=38
+                height=row_height
             )
             row_card.pack(fill="x", pady=4)
             row_card.pack_propagate(False)
 
             inner = ctk.CTkFrame(row_card, fg_color="transparent")
             inner.pack(fill="both", expand=True, padx=16, pady=4)
-
-            # Make left side expand, right side stay compact
-            inner.grid_columnconfigure(0, weight=1)
-            inner.grid_columnconfigure(1, weight=0)
 
             # Default value color
             value_color = "#6D5C43"
@@ -904,23 +913,40 @@ class PremiumAppShell(ctk.CTkFrame):
                 except Exception:
                     pass
 
-            # Left label
-            ctk.CTkLabel(
-                inner,
-                text=label_text,
-                text_color="#8A7758",
-                font=("Arial", 11, "bold"),
-                anchor="w"
-            ).grid(row=0, column=0, sticky="w")
+            if has_label:
+                # Make left side expand, right side stay compact.
+                inner.grid_columnconfigure(0, weight=1)
+                inner.grid_columnconfigure(1, weight=0)
 
-            # Right value
-            ctk.CTkLabel(
-                inner,
-                text=str(value_text),
-                text_color=value_color,
-                font=("Arial", 15, "bold"),
-                anchor="e"
-            ).grid(row=0, column=1, sticky="e")
+                ctk.CTkLabel(
+                    inner,
+                    text=label_text,
+                    text_color="#8A7758",
+                    font=("Arial", 11, "bold"),
+                    anchor="w"
+                ).grid(row=0, column=0, sticky="w")
+
+                ctk.CTkLabel(
+                    inner,
+                    text=str(value_text),
+                    text_color=value_color,
+                    font=("Arial", 15, "bold"),
+                    anchor="e",
+                    justify="right",
+                    wraplength=300,
+                ).grid(row=0, column=1, sticky="e")
+            else:
+                # Message-only row: use full width and wrapping to avoid clipping paths.
+                message_label = ctk.CTkLabel(
+                    inner,
+                    text=str(value_text),
+                    text_color=value_color,
+                    font=("Arial", 15, "bold"),
+                    anchor="center",
+                    justify="center",
+                    wraplength=420,
+                )
+                message_label.pack(fill="both", expand=True)
 
         # ---------------------------------------------------------
         # OK button

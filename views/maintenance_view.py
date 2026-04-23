@@ -194,10 +194,19 @@ class MaintenanceDashboardView(ttk.Frame):
         )
 
         if AuthController.can_access_feature("finance_dashboard", self.current_role):
-            finance_action = self.open_finance_payments or self.open_finance_reports
-            nav_sections[2]["items"].append(
-                {"label": "Payments & Reports", "action": finance_action, "icon": "payments"}
-            )
+            role_key = str(self.current_role or "").strip().lower()
+            if role_key == "finance":
+                finance_action = self.open_finance_payments or self.open_finance_reports
+                nav_sections[2]["items"].append(
+                    {"label": "Payments & Reports", "action": finance_action, "icon": "payments"}
+                )
+            else:
+                nav_sections[2]["items"].extend(
+                    [
+                        {"label": "Payments", "action": self.open_finance_payments, "icon": "payments"},
+                        {"label": "Reports", "action": self.open_finance_reports, "icon": "reports"},
+                    ]
+                )
 
         nav_sections[3]["items"].append(
             {"label": "User Access", "action": self.open_user_management, "icon": "shield"}

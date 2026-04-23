@@ -167,13 +167,30 @@ class UserManagementView(ctk.CTkFrame):
 
         finance_items = []
         if AuthController.can_access_feature("finance_dashboard"):
-            finance_items.append(
-                {
-                    "label": "Payments & Reports",
-                    "action": self.open_finance_payments,
-                    "icon": "payments",
-                }
-            )
+            role_key = str(AuthController.get_current_role() or "").strip().lower()
+            if role_key == "finance":
+                finance_items.append(
+                    {
+                        "label": "Payments & Reports",
+                        "action": self.open_finance_payments,
+                        "icon": "payments",
+                    }
+                )
+            else:
+                finance_items.extend(
+                    [
+                        {
+                            "label": "Payments",
+                            "action": self.open_finance_payments,
+                            "icon": "payments",
+                        },
+                        {
+                            "label": "Reports",
+                            "action": self.open_finance_reports,
+                            "icon": "reports",
+                        },
+                    ]
+                )
 
         # Shared premium shell provides common layout structure and header tools.
         self.shell = PremiumAppShell(
