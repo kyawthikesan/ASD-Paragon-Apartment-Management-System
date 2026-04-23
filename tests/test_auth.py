@@ -1,3 +1,7 @@
+# Student Name: Shune Pyae Pyae (Evelyn) Aung
+# Student ID: 24028257
+# Module: UFCF8S-30-2 Advanced Software Development
+
 import unittest
 from unittest.mock import patch
 
@@ -121,7 +125,21 @@ class TestAuthController(unittest.TestCase):
     def test_can_access_feature_with_current_user_fallback(self):
         AuthController.current_user = {"role_name": "manager"}
         self.assertTrue(AuthController.can_access_feature("tenant_management"))
-        self.assertFalse(AuthController.can_access_feature("finance_dashboard"))
+        self.assertTrue(AuthController.can_access_feature("finance_dashboard"))
+
+    def test_manager_is_read_only_for_operational_actions(self):
+        AuthController.current_user = {"role_name": "manager"}
+        self.assertFalse(AuthController.can_perform_action("register_tenants"))
+        self.assertFalse(AuthController.can_perform_action("create_leases"))
+        self.assertFalse(AuthController.can_perform_action("edit_apartments"))
+        self.assertFalse(AuthController.can_perform_action("process_payments"))
+        self.assertFalse(AuthController.can_perform_action("log_maintenance"))
+
+    def test_front_desk_and_finance_action_access(self):
+        self.assertTrue(AuthController.can_perform_action("register_tenants", "front_desk"))
+        self.assertTrue(AuthController.can_perform_action("create_leases", "front_desk"))
+        self.assertTrue(AuthController.can_perform_action("process_payments", "finance"))
+        self.assertFalse(AuthController.can_perform_action("edit_apartments", "front_desk"))
 
     def test_can_access_feature_unknown_feature_denied(self):
         self.assertFalse(AuthController.can_access_feature("unknown_feature", "admin"))

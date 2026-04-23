@@ -1,3 +1,7 @@
+# Student Name: Shune Pyae Pyae (Evelyn) Aung
+# Student ID: 24028257
+# Module: UFCF8S-30-2 Advanced Software Development
+
 from datetime import datetime
 import sqlite3
 from database.db_manager import DBManager
@@ -38,16 +42,16 @@ class UserDAO:
         "maintenance": {
             "register_tenants": 0,
             "manage_payments": 0,
-            "log_maintenance": 1,
+            "log_maintenance": 0,
             "generate_reports": 0,
             "manage_user_accounts": 0,
         },
         "manager": {
-            "register_tenants": 1,
-            "manage_payments": 1,
-            "log_maintenance": 1,
+            "register_tenants": 0,
+            "manage_payments": 0,
+            "log_maintenance": 0,
             "generate_reports": 1,
-            "manage_user_accounts": 1,
+            "manage_user_accounts": 0,
         },
     }
 
@@ -81,6 +85,26 @@ class UserDAO:
                             permission_key,
                             int(permissions.get(permission_key, 0)),
                         )
+                    )
+            # Enforce manager role as read-only for operational actions.
+            manager = conn.execute(
+                "SELECT id FROM roles WHERE role_name = 'manager'"
+            ).fetchone()
+            if manager is not None:
+                manager_defaults = UserDAO.DEFAULT_ROLE_PERMISSIONS["manager"]
+                for permission_key in UserDAO.PERMISSION_KEYS:
+                    conn.execute(
+                        """
+                        INSERT INTO role_permissions (role_id, permission_key, allowed)
+                        VALUES (?, ?, ?)
+                        ON CONFLICT(role_id, permission_key)
+                        DO UPDATE SET allowed = excluded.allowed
+                        """,
+                        (
+                            manager["id"],
+                            permission_key,
+                            int(manager_defaults.get(permission_key, 0)),
+                        ),
                     )
             conn.commit()
         finally:
@@ -178,6 +202,30 @@ class UserDAO:
                 JOIN roles r ON u.role_id = r.id
                 ORDER BY u.id
             """).fetchall()
+        finally:
+            conn.close()
+
+    @staticmethod
+    def get_active_maintenance_staff(city: str | None = None):
+        conn = DBManager.get_connection()
+        try:
+            query = """
+                SELECT
+                    u.id,
+                    u.full_name,
+                    u.username,
+                    u.location
+                FROM users u
+                JOIN roles r ON u.role_id = r.id
+                WHERE LOWER(r.role_name) = 'maintenance'
+                  AND u.is_active = 1
+            """
+            params = []
+            if city and str(city).strip():
+                query += " AND LOWER(TRIM(COALESCE(u.location, ''))) = LOWER(TRIM(?))"
+                params.append(str(city).strip())
+            query += " ORDER BY u.full_name"
+            return conn.execute(query, tuple(params)).fetchall()
         finally:
             conn.close()
 

@@ -1,17 +1,21 @@
 # Paragon Apartment Management System (PAMS)
 
 ## Module Information
+
 **Module:** Applied System Design  
 **Project Title:** Paragon Apartment Management System (PAMS)  
-**Academic Year:** 2025/2026  
+**Academic Year:** 2025/2026
 
 ## Project Overview
+
 The Paragon Apartment Management System (PAMS) is a desktop-based software application developed to support the management of apartment-related operations. The system provides an organised and user-friendly platform for managing tenants, apartments, and lease records while demonstrating the practical application of system analysis, design, and implementation principles.
 
 This project was developed as a group assignment and focuses on applying software development methodologies, object-oriented design, modular programming, graphical user interface development, and database integration.
 
 ## Objectives
+
 The main objectives of this project are:
+
 - To design and develop a functional apartment management system
 - To provide role-based access through a login system
 - To manage core records such as tenants, apartments, and leases
@@ -19,7 +23,9 @@ The main objectives of this project are:
 - To apply concepts learned in system analysis and design into a practical software solution
 
 ## System Features
+
 The system currently includes the following features:
+
 - Secure login interface
 - Role-based dashboard access
 - Centralized RBAC feature guards
@@ -34,12 +40,14 @@ The system currently includes the following features:
 - Database storage using SQLite
 
 ## Technologies Used
+
 - **Programming Language:** Python
 - **GUI Framework:** Tkinter
 - **Database:** SQLite
 - **Development Approach:** Modular and object-oriented design
 
 ## System Structure
+
 The project is organised into multiple components to improve readability, maintainability, and scalability:
 
 - **Main Program** – starts the application and initializes the database
@@ -48,6 +56,7 @@ The project is organised into multiple components to improve readability, mainta
 - **Views** – provide the graphical interface for users to interact with the system
 
 ## Project Files
+
 ```text
 PAMS/
 │── main.py
@@ -83,9 +92,11 @@ PAMS/
 ```
 
 ## Rubric Mapping (Implementation + Testing)
+
 This section maps completed features to the assessment criteria.
 
 - Implementation (business logic + GUI + DB integration)
+
   - Login authentication and role-based routing are fully implemented.
   - RBAC guards are enforced in navigation and module access.
   - Admin user management supports create, view, edit, and deactivate.
@@ -102,20 +113,25 @@ This section maps completed features to the assessment criteria.
   - Current automated suite status: `27 tests passing` via `python3 -m unittest discover -s tests -p "test_*.py"`.
 
 ## Team Members and Roles
-This project was completed by a group of four members:
-**Shune Pyae Pyae Aung** – Project Lead, System Architect, and Integration Lead
-Responsible for leading the project, dividing tasks among team members, coordinating implementation milestones, planning the system structure, supporting module integration, and ensuring the final application aligned with assessment requirements.
-**Kyaw Thike San** – UI/Frontend Developer
-Responsible for designing and implementing key graphical user interface components, improving layout, and enhancing user interaction.
-**Nang Phwe Hleng Hun** – Backend and Database Developer
-Responsible for database design, data handling, query implementation, and backend logic.
-[Member 4 Name] – Testing and Documentation Lead
-Responsible for testing system functions, identifying bugs, supporting debugging, and preparing documentation.
 
+This project was completed by a group of four members:
+
+**Shune Pyae Pyae Aung** – Project Lead, System Architect, Integration Lead, Authentication & User Access Module Developer, Dashboard & UI/Frontend Developer  
+Responsible for leading the project, defining system architecture, dividing tasks, and coordinating implementation milestones. Supported cross-module integration to ensure the application met assessment requirements. Developed the Authentication and User Access module with secure login, password hashing, and role-based access control (RBAC). Implemented user management features including user creation, updates, and permission handling. Designed and developed the main dashboard and key UI components to improve usability, layout, and overall user experience.
+
+**Kyaw Thike San** – Maintenance and Finance Module Developer, Integration Support, and Testing/Deployment Support  
+Responsible for developing and refining the maintenance component of the system, including maintenance request creation, request tracking, scheduling and updating maintenance work, resolution handling, and maintenance cost reporting. Also contributed to the finance component by fixing and improving payments and reports features. In addition, supported role-based workflow improvements, usability enhancements, debugging issues across different environments, Git/GitHub synchronization, cross-platform testing, and system integration.
+
+**Nang Phwe Hleng Hun** – Tenant, Apartment, and Lease Module Developer, UML Designer, and Methodology & Documentation Lead
+Responsible for designing and implementing core system modules for tenant, apartment, and lease management, including CRUD operations, search features, and apartment availability tracking. Implemented lease logic with validation checks such as tenant eligibility and apartment availability, and handled lease creation, termination, and status updates. Ensured data consistency through DAO-based interactions and module integration. Also developed UML diagrams (class and sequence) and contributed to documenting the Agile-based development process and team collaboration in the project report.
+
+[Member 4 ] – Testing and Documentation Lead
+Responsible for testing system functions, identifying bugs, supporting debugging, and preparing documentation.
 
 ## Setup Instructions
 
 ### 1. Clone or download the project
+
 Clone the repository or download the ZIP file, then open the project folder.
 
 ```bash
@@ -163,3 +179,4 @@ The following features may be implemented in future versions:
 The Paragon Apartment Management System (PAMS) demonstrates the successful development of a desktop application that applies key concepts from applied system design. The project reflects teamwork, modular design, GUI implementation, and database integration while addressing the practical needs of apartment management.
 Academic Use
 This project was developed for academic purposes as part of a university group assignment.
+```

@@ -1,3 +1,7 @@
+# Student Name: Shune Pyae Pyae (Evelyn) Aung
+# Student ID: 24028257
+# Module: UFCF8S-30-2 Advanced Software Development
+
 import tkinter as tk
 from tkinter import ttk
 import customtkinter as ctk
@@ -174,6 +178,8 @@ class PAMSApp(tk.Tk):
                 self.show_lease_management,
                 self.show_finance_dashboard,
                 self.show_maintenance_dashboard,
+                self.show_finance_payments,
+                self.show_finance_reports,
             )
 
         except Exception as error:
@@ -217,21 +223,53 @@ class PAMSApp(tk.Tk):
 
     def show_finance_dashboard(self, initial_tab="Invoices", visible_tabs=None):
         """Open finance dashboard with selected starting tab."""
+        role = str(AuthController.get_current_role() or "").strip().lower()
+        if role == "manager":
+            initial_tab = "Reports"
+            visible_tabs = ("Reports",)
+
         self._show_role_view(
             FinanceDashboardView,
             "Finance Dashboard",
             initial_tab=initial_tab,
             visible_tabs=visible_tabs,
+            open_tenant_management=self.show_tenant_management,
+            open_apartment_management=self.show_apartment_management,
+            open_lease_management=self.show_lease_management,
+            open_finance_payments=self.show_finance_payments,
+            open_finance_reports=self.show_finance_reports,
+            open_user_management=self.show_user_management,
+            open_maintenance_dashboard=self.show_maintenance_dashboard,
         )
 
     def show_finance_payments(self):
+        role = str(AuthController.get_current_role() or "").strip().lower()
+        if role == "manager":
+            self.show_finance_reports()
+            return
+        if role == "finance":
+            self.show_finance_dashboard()
+            return
         self.show_finance_dashboard("Payments", visible_tabs=("Invoices", "Payments"))
 
     def show_finance_reports(self):
         self.show_finance_dashboard("Reports", visible_tabs=("Reports",))
 
     def show_maintenance_dashboard(self):
-        self._show_role_view(MaintenanceDashboardView, "Maintenance Dashboard")
+        if not self._require_feature_access("maintenance_management", "Maintenance Dashboard"):
+            return
+
+        self._show_role_view(
+            MaintenanceDashboardView,
+            "Maintenance Dashboard",
+            open_tenant_management=self.show_tenant_management,
+            open_apartment_management=self.show_apartment_management,
+            open_lease_management=self.show_lease_management,
+            open_finance_payments=self.show_finance_payments,
+            open_finance_reports=self.show_finance_reports,
+            open_user_management=self.show_user_management,
+            open_maintenance_dashboard=self.show_maintenance_dashboard,
+        )
 
     def _show_role_view(self, view_class, view_name: str, **view_kwargs):
         """
@@ -506,6 +544,11 @@ class PAMSApp(tk.Tk):
             self.container,
             self.show_dashboard,
             open_apartment_management=self.show_apartment_management,
+            open_tenant_management=self.show_tenant_management,
+            open_lease_management=self.show_lease_management,
+            open_maintenance_dashboard=self.show_maintenance_dashboard,
+            open_finance_payments=self.show_finance_payments,
+            open_finance_reports=self.show_finance_reports,
         )
 
     def show_tenant_management(self):
@@ -518,6 +561,10 @@ class PAMSApp(tk.Tk):
             self.show_dashboard,
             open_user_management=self.show_user_management,
             open_apartment_management=self.show_apartment_management,
+            open_lease_management=self.show_lease_management,
+            open_maintenance_dashboard=self.show_maintenance_dashboard,
+            open_finance_payments=self.show_finance_payments,
+            open_finance_reports=self.show_finance_reports,
         )
 
     def show_apartment_management(self):
@@ -530,6 +577,10 @@ class PAMSApp(tk.Tk):
             self.show_dashboard,
             open_lease_management=self.show_lease_management,
             open_user_management=self.show_user_management,
+            open_tenant_management=self.show_tenant_management,
+            open_maintenance_dashboard=self.show_maintenance_dashboard,
+            open_finance_payments=self.show_finance_payments,
+            open_finance_reports=self.show_finance_reports,
         )
 
     def show_lease_management(self):
@@ -538,7 +589,16 @@ class PAMSApp(tk.Tk):
 
         self.clear_view()
         LeaseDAO.expire_leases()
-        self.current_view = LeaseView(self.container, self.show_dashboard)
+        self.current_view = LeaseView(
+            self.container,
+            self.show_dashboard,
+            open_user_management=self.show_user_management,
+            open_tenant_management=self.show_tenant_management,
+            open_apartment_management=self.show_apartment_management,
+            open_maintenance_dashboard=self.show_maintenance_dashboard,
+            open_finance_payments=self.show_finance_payments,
+            open_finance_reports=self.show_finance_reports,
+        )
 
     def logout(self):
         AuthController.logout()

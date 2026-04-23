@@ -1,3 +1,6 @@
+# Student Name: Kyaw Thike (oliver) San
+# Student ID: 25014001
+# Module: UFCF8S-30-2 Advanced Software Development
 from datetime import datetime
 from database.db_manager import DBManager
 from models.payment import Payment

@@ -77,10 +77,25 @@ class UserManagementView(ctk.CTkFrame):
         ("manage_user_accounts", "Manage User Accounts"),
     ]
 
-    def __init__(self, parent, go_back, open_apartment_management=None):
+    def __init__(
+        self,
+        parent,
+        go_back,
+        open_apartment_management=None,
+        open_tenant_management=None,
+        open_lease_management=None,
+        open_maintenance_dashboard=None,
+        open_finance_payments=None,
+        open_finance_reports=None,
+    ):
         super().__init__(parent, fg_color="#F8F5F0")
         self.go_back = go_back
         self.open_apartment_management = open_apartment_management or go_back
+        self.open_tenant_management = open_tenant_management or go_back
+        self.open_lease_management = open_lease_management or go_back
+        self.open_maintenance_dashboard = open_maintenance_dashboard or go_back
+        self.open_finance_payments = open_finance_payments or go_back
+        self.open_finance_reports = open_finance_reports or go_back
 
         # Tracks current selection and cached user/permission data.
         self.selected_user_id = None
@@ -130,7 +145,9 @@ class UserManagementView(ctk.CTkFrame):
         # is allowed to access.
         management_items = []
         if AuthController.can_access_feature("tenant_management"):
-            management_items.append({"label": "Tenants", "action": self.go_back, "icon": "tenants"})
+            management_items.append(
+                {"label": "Tenants", "action": self.open_tenant_management, "icon": "tenants"}
+            )
         if AuthController.can_access_feature("apartment_management"):
             management_items.append(
                 {
@@ -140,15 +157,48 @@ class UserManagementView(ctk.CTkFrame):
                 }
             )
         if AuthController.can_access_feature("lease_management"):
-            management_items.append({"label": "Leases", "action": self.go_back, "icon": "leases"})
-        if AuthController.can_access_feature("maintenance_dashboard"):
-            management_items.append({"label": "Maintenance", "action": self.go_back, "icon": "openissues"})
+            management_items.append(
+                {"label": "Leases", "action": self.open_lease_management, "icon": "leases"}
+            )
+        if AuthController.can_access_feature("maintenance_management"):
+            management_items.append(
+                {"label": "Maintenance", "action": self.open_maintenance_dashboard, "icon": "maintenance"}
+            )
 
         finance_items = []
-        if AuthController.can_access_feature("payment_management"):
-            finance_items.append({"label": "Payments", "action": self.go_back, "icon": "payments"})
-        if AuthController.can_access_feature("reports"):
-            finance_items.append({"label": "Reports", "action": self.go_back, "icon": "reports"})
+        if AuthController.can_access_feature("finance_dashboard"):
+            role_key = str(AuthController.get_current_role() or "").strip().lower()
+            if role_key == "finance":
+                finance_items.append(
+                    {
+                        "label": "Payments & Reports",
+                        "action": self.open_finance_payments,
+                        "icon": "payments",
+                    }
+                )
+            elif role_key == "manager":
+                finance_items.append(
+                    {
+                        "label": "Reports",
+                        "action": self.open_finance_reports,
+                        "icon": "reports",
+                    }
+                )
+            else:
+                finance_items.extend(
+                    [
+                        {
+                            "label": "Payments",
+                            "action": self.open_finance_payments,
+                            "icon": "payments",
+                        },
+                        {
+                            "label": "Reports",
+                            "action": self.open_finance_reports,
+                            "icon": "reports",
+                        },
+                    ]
+                )
 
         # Shared premium shell provides common layout structure and header tools.
         self.shell = PremiumAppShell(
@@ -1188,9 +1238,10 @@ class UserManagementView(ctk.CTkFrame):
         """Load icon used in custom modal dialogs."""
         if not icon_name or not PIL_AVAILABLE:
             return None
-        icon_path = os.path.join("images", "icons", f"{icon_name}.png")
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        icon_path = os.path.join(project_root, "images", "icons", f"{icon_name}.png")
         if not os.path.exists(icon_path) and icon_name == "success":
-            icon_path = os.path.join("images", "icons", "activate.png")
+            icon_path = os.path.join(project_root, "images", "icons", "activate.png")
         if not os.path.exists(icon_path):
             return None
         try:
@@ -1434,12 +1485,14 @@ class UserManagementView(ctk.CTkFrame):
     def _open_user_modal(self, user=None):
         """Open modal used for both adding and editing users."""
         is_edit = user is not None
-        dialog = ctk.CTkToplevel(self)
+        root = self.winfo_toplevel()
+        dialog = ctk.CTkToplevel(root)
         dialog.title("Edit User" if is_edit else "Add User")
         self._center_dialog(dialog, 560, 520)
-        dialog.grab_set()
+        dialog.transient(root)
+        dialog.resizable(False, False)
         dialog.configure(fg_color="#F8F5F0")
-        dialog.after(30, lambda: (dialog.lift(), dialog.focus_force()))
+        dialog.after(30, lambda: (dialog.lift(), dialog.focus_force(), dialog.grab_set()))
 
         body = ctk.CTkFrame(dialog, fg_color="#F8F5F0", corner_radius=0)
         body.pack(fill="both", expand=True, padx=18, pady=18)
@@ -1570,7 +1623,11 @@ class UserManagementView(ctk.CTkFrame):
 
                 dialog.destroy()
                 self.load_users()
-                messagebox.showinfo("Success", "User saved successfully.")
+                self._show_status_modal(
+                    title="Success",
+                    message="User saved successfully.",
+                    icon_name="success",
+                )
             except Exception as err:
                 messagebox.showerror("Error", str(err))
 
@@ -1591,11 +1648,13 @@ class UserManagementView(ctk.CTkFrame):
 
     def _open_manage_roles_modal(self):
         """Open modal that allows editing role-permission mappings."""
-        dialog = ctk.CTkToplevel(self)
+        root = self.winfo_toplevel()
+        dialog = ctk.CTkToplevel(root)
         dialog.title("Manage Role Permissions")
         self._center_dialog(dialog, 860, 460)
-        dialog.transient(self.winfo_toplevel())
-        dialog.grab_set()
+        dialog.transient(root)
+        dialog.resizable(False, False)
+        dialog.after(30, lambda: (dialog.lift(), dialog.focus_force(), dialog.grab_set()))
         dialog.configure(fg_color="#F8F5F0")
 
         body = ctk.CTkFrame(dialog, fg_color="#F8F5F0", corner_radius=0)

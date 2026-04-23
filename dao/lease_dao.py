@@ -1,3 +1,7 @@
+# Student Name: Nang Phwe Hleng Hun
+# Student ID: 24043841
+# Module: UFCF8S-30-2 Advanced Software Development
+
 from database.db_manager import DBManager
 from datetime import date
 
@@ -231,6 +235,46 @@ class LeaseDAO:
         conn.close()
 
     # =========================
+    # RENEW LEASE (UPDATE END DATE)
+    # =========================
+    @staticmethod
+    def renew_lease(lease_id, new_end_date):
+        conn = DBManager.get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT leaseID, end_date
+            FROM leases
+            WHERE leaseID = ?
+            """,
+            (lease_id,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            return "Lease not found"
+
+        current_end = str(row["end_date"])
+
+        if str(new_end_date) <= current_end:
+            conn.close()
+            return "New end date must be after current end date"
+
+        cursor.execute(
+            """
+            UPDATE leases
+            SET end_date = ?, status = 'Active'
+            WHERE leaseID = ?
+            """,
+            (new_end_date, lease_id),
+        )
+
+        conn.commit()
+        conn.close()
+        return "Success"
+
+    # =========================
     # TERMINATE LEASE
     # =========================
     @staticmethod
@@ -257,15 +301,19 @@ class LeaseDAO:
         end = date.fromisoformat(end_date)
 
         penalty = 0
+        new_status = "Ended"
+        effective_end_date = end_date
 
         if today < end:
             penalty = rent * 0.05
+            new_status = "Notice Given"
+            effective_end_date = today.isoformat()
 
         cursor.execute("""
         UPDATE leases
-        SET status = 'Ended'
+        SET status = ?, end_date = ?
         WHERE leaseID = ?
-        """, (lease_id,))
+        """, (new_status, effective_end_date, lease_id))
 
         cursor.execute("""
         UPDATE apartments

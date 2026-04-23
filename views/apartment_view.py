@@ -1,12 +1,23 @@
+# Student Name: Nang Phwe Hleng Hun
+# Student ID: 24043841
+# Module: UFCF8S-30-2 Advanced Software Development
+
+# Student Name: Shune Pyae Pyae (Evelyn) Aung
+# Student ID: 24028257
+# Module: UFCF8S-30-2 Advanced Software Development
+
 import tkinter as tk
 import os
 from datetime import date
 
 import customtkinter as ctk
+
 try:
     from PIL import Image
     PIL_AVAILABLE = True
 except Exception:
+    # PIL is optional here. If it is not installed, the view will still work,
+    # but popup images will fall back to basic handling.
     Image = None
     PIL_AVAILABLE = False
 
@@ -41,6 +52,8 @@ class ApartmentView(tk.Frame):
 
     @staticmethod
     def _read(record, key, default=None):
+        # Small helper so the view can safely read either dicts or row-like objects
+        # without repeating the same error handling everywhere.
         if record is None:
             return default
         if isinstance(record, dict):
@@ -56,6 +69,8 @@ class ApartmentView(tk.Frame):
         return self.winfo_toplevel()
 
     def _center_window(self, window, parent=None):
+        # Center popups relative to the main app window so dialogs do not appear
+        # in odd positions on the screen.
         host = parent or self._popup_parent()
         window.update_idletasks()
         host.update_idletasks()
@@ -63,6 +78,7 @@ class ApartmentView(tk.Frame):
         width = window.winfo_width()
         height = window.winfo_height()
         if width <= 1 or height <= 1:
+            # Some new windows report size too early, so fall back to geometry text.
             geom = window.geometry().split("+")[0]
             if "x" in geom:
                 try:
@@ -85,16 +101,28 @@ class ApartmentView(tk.Frame):
         back_callback,
         open_lease_management=None,
         open_user_management=None,
+        open_tenant_management=None,
+        open_maintenance_dashboard=None,
+        open_finance_payments=None,
+        open_finance_reports=None,
     ):
         super().__init__(parent, bg=self.PAGE_BG)
         self.pack(fill="both", expand=True)
 
+        # Cache current user's access details once when the page loads.
         self.is_admin = AuthController.is_admin()
         self.city_scope = AuthController.get_city_scope()
         self.role = AuthController.get_current_role()
+        self.can_modify_apartments = AuthController.can_perform_action("edit_apartments", self.role)
+        self.can_create_leases = AuthController.can_perform_action("create_leases", self.role)
         self.open_lease_management = open_lease_management
         self.open_user_management = open_user_management or back_callback
+        self.open_tenant_management = open_tenant_management or back_callback
+        self.open_maintenance_dashboard = open_maintenance_dashboard or back_callback
+        self.open_finance_payments = open_finance_payments or back_callback
+        self.open_finance_reports = open_finance_reports or back_callback
 
+        # State used for search/filtering and quick lookups.
         self.search_text = ""
         self.active_filter = "All Units"
         self.all_apartments = []
@@ -110,7 +138,7 @@ class ApartmentView(tk.Frame):
             {
                 "title": "Management",
                 "items": [
-                    {"label": "Tenants", "action": back_callback, "icon": "tenants"},
+                    {"label": "Tenants", "action": self.open_tenant_management, "icon": "tenants"},
                     {"label": "Apartments", "action": lambda: None, "icon": "apartments"},
                 ],
             },
@@ -118,8 +146,7 @@ class ApartmentView(tk.Frame):
             {"title": "Admin", "items": []},
         ]
 
-        if AuthController.can_access_feature("maintenance_dashboard", self.role):
-            nav_sections[1]["items"].append({"label": "Maintenance", "action": back_callback, "icon": "maintenance"})
+        # Build sidebar items based on the logged-in user's permissions.
         if AuthController.can_access_feature("lease_management", self.role):
             nav_sections[1]["items"].append(
                 {
@@ -128,9 +155,43 @@ class ApartmentView(tk.Frame):
                     "icon": "leases",
                 }
             )
+        if AuthController.can_access_feature("maintenance_management", self.role):
+            nav_sections[1]["items"].append(
+                {"label": "Maintenance", "action": self.open_maintenance_dashboard, "icon": "maintenance"}
+            )
         if AuthController.can_access_feature("finance_dashboard", self.role):
-            nav_sections[2]["items"].append({"label": "Payments", "action": back_callback, "icon": "payments"})
-            nav_sections[2]["items"].append({"label": "Reports", "action": back_callback, "icon": "reports"})
+            role_key = str(self.role or "").strip().lower()
+            if role_key == "finance":
+                nav_sections[2]["items"].append(
+                    {
+                        "label": "Payments & Reports",
+                        "action": self.open_finance_payments,
+                        "icon": "payments",
+                    }
+                )
+            elif role_key == "manager":
+                nav_sections[2]["items"].append(
+                    {
+                        "label": "Reports",
+                        "action": self.open_finance_reports,
+                        "icon": "reports",
+                    }
+                )
+            else:
+                nav_sections[2]["items"].extend(
+                    [
+                        {
+                            "label": "Payments",
+                            "action": self.open_finance_payments,
+                            "icon": "payments",
+                        },
+                        {
+                            "label": "Reports",
+                            "action": self.open_finance_reports,
+                            "icon": "reports",
+                        },
+                    ]
+                )
         # Keep User Access visible for consistent sidebar layout across roles.
         nav_sections[3]["items"].append(
             {"label": "User Access", "action": self.open_user_management, "icon": "shield"}
@@ -157,6 +218,7 @@ class ApartmentView(tk.Frame):
         self.load_apartments()
 
     def _build_ui(self):
+        # Top summary cards.
         self.stats_row = ctk.CTkFrame(self.content, fg_color="transparent")
         self.stats_row.pack(fill="x", pady=(4, 12))
         self.stats_row.grid_columnconfigure(0, weight=1)
@@ -170,6 +232,7 @@ class ApartmentView(tk.Frame):
         self._make_stat_card(2, "VACANT", "0", value_color="#7A5A0A")
         self._make_stat_card(3, "MAINTENANCE HOLD", "0", value_color="#8B3030")
 
+        # Filter buttons and add-apartment action.
         filter_row = ctk.CTkFrame(self.content, fg_color="transparent")
         filter_row.pack(fill="x", pady=(0, 12))
 
@@ -187,21 +250,23 @@ class ApartmentView(tk.Frame):
             self.filter_buttons[label] = btn
         self._refresh_filter_styles()
 
-        ctk.CTkButton(
-            filter_row,
-            text="+ Add Apartment",
-            height=38,
-            width=188,
-            corner_radius=16,
-            fg_color="#F3EEE5",
-            hover_color="#ECE2D2",
-            text_color=self.TEXT,
-            border_width=1,
-            border_color="#CDBEA6",
-            font=("Segoe UI", 13, "bold"),
-            command=self._open_add_dialog,
-        ).pack(side="right")
+        if self.can_modify_apartments:
+            ctk.CTkButton(
+                filter_row,
+                text="+ Add Apartment",
+                height=38,
+                width=188,
+                corner_radius=16,
+                fg_color="#F3EEE5",
+                hover_color="#ECE2D2",
+                text_color=self.TEXT,
+                border_width=1,
+                border_color="#CDBEA6",
+                font=("Segoe UI", 13, "bold"),
+                command=self._open_add_dialog,
+            ).pack(side="right")
 
+        # Main list container for apartment cards.
         self.list_wrap = ctk.CTkFrame(
             self.content,
             fg_color=self.CARD_BG,
@@ -257,6 +322,7 @@ class ApartmentView(tk.Frame):
         self._render_apartment_cards()
 
     def _refresh_filter_styles(self):
+        # Highlight the selected filter so the current view is obvious.
         for label, button in self.filter_buttons.items():
             active = label == self.active_filter
             button.configure(
@@ -272,12 +338,14 @@ class ApartmentView(tk.Frame):
         self._render_apartment_cards()
 
     def load_locations(self):
+        # Non-admin users only see locations inside their assigned city scope.
         locations = LocationDAO.get_all_locations()
         if not self.is_admin and self.city_scope:
             locations = [loc for loc in locations if str(loc["city"]).strip() == self.city_scope]
         self.location_map = {loc["city"]: loc["location_id"] for loc in locations}
 
     def load_apartments(self):
+        # Refresh everything the page depends on, then redraw the UI.
         self.all_apartments = [dict(row) for row in ApartmentController.get_all_apartments(city=self.city_scope)]
         self.lease_by_apartment = self._build_active_lease_map()
         self.maintenance_hold_ids = self._build_maintenance_hold_set()
@@ -285,6 +353,7 @@ class ApartmentView(tk.Frame):
         self._render_apartment_cards()
 
     def _build_active_lease_map(self):
+        # Keep only the most relevant active lease for each apartment.
         lease_map = {}
         leases = LeaseDAO.get_all_leases_with_financial_details(city=self.city_scope)
         for lease in leases:
@@ -295,6 +364,7 @@ class ApartmentView(tk.Frame):
                 lease_map[apartment_id] = lease
                 continue
 
+            # If duplicates exist, keep the one with the latest end date.
             previous_end = str(lease_map[apartment_id].get("end_date") or "")
             current_end = str(lease.get("end_date") or "")
             if current_end > previous_end:
@@ -302,6 +372,7 @@ class ApartmentView(tk.Frame):
         return lease_map
 
     def _build_maintenance_hold_set(self):
+        # Any apartment with an open/pending maintenance request is treated as on hold.
         hold_ids = set()
         active_states = {"open", "in progress", "pending", "new"}
         for item in MaintenanceDAO.get_all_requests(city=self.city_scope):
@@ -314,6 +385,7 @@ class ApartmentView(tk.Frame):
         return hold_ids
 
     def _estimate_alert_count(self):
+        # Notification badge combines vacancies and maintenance issues.
         apartments = ApartmentController.get_all_apartments(city=self.city_scope)
         holds = self._build_maintenance_hold_set()
         vacant_count = 0
@@ -324,6 +396,7 @@ class ApartmentView(tk.Frame):
         return len(holds) + vacant_count
 
     def _normalize_status(self, apartment):
+        # The UI uses a business-friendly status, not just the raw DB value.
         apartment_id = apartment["apartmentID"]
         if apartment_id in self.maintenance_hold_ids:
             return "Maintenance Hold"
@@ -357,6 +430,8 @@ class ApartmentView(tk.Frame):
             if self.active_filter != "All Units" and normalized_status != self.active_filter:
                 continue
 
+            # Search checks a combined string so one search box can match
+            # apartment details, tenant info, and lease end date.
             lease = self.lease_by_apartment.get(apartment["apartmentID"], {})
             search_blob = " ".join(
                 [
@@ -376,6 +451,7 @@ class ApartmentView(tk.Frame):
         return rows
 
     def _render_apartment_cards(self):
+        # Clear and rebuild the list each time the filter/search changes.
         for child in self.cards_area.winfo_children():
             child.destroy()
 
@@ -409,6 +485,7 @@ class ApartmentView(tk.Frame):
         row.pack_propagate(False)
         row.grid_columnconfigure(1, weight=1)
 
+        # Left badge shows a short apartment code for easier scanning.
         left_code = ctk.CTkFrame(
             row,
             fg_color="#F1EBDF",
@@ -514,7 +591,8 @@ class ApartmentView(tk.Frame):
             font=("Segoe UI", 10, "bold"),
             command=lambda unit=apartment: self._show_unit_details(unit),
         ).pack(side="left", padx=(0, 6))
-        if status == "Vacant":
+        if status == "Vacant" and self.can_create_leases:
+            # Vacant units get a quick shortcut to assignment.
             ctk.CTkButton(
                 actions,
                 text="Assign",
@@ -529,7 +607,7 @@ class ApartmentView(tk.Frame):
                 font=("Segoe UI", 10, "bold"),
                 command=lambda unit=apartment: self._assign_apartment(unit),
             ).pack(side="left")
-        else:
+        elif self.can_modify_apartments:
             ctk.CTkButton(
                 actions,
                 text="Edit",
@@ -546,6 +624,7 @@ class ApartmentView(tk.Frame):
             ).pack(side="left")
 
     def _unit_code(self, apartment_id):
+        # Format IDs into a cleaner label for display.
         try:
             return f"A-{int(apartment_id):03d}"
         except (TypeError, ValueError):
@@ -571,6 +650,7 @@ class ApartmentView(tk.Frame):
         return f"Tenant: {tenant} · Lease ends {end_date}"
 
     def _format_rent(self, value):
+        # Show whole numbers without decimals, but keep pence if needed.
         try:
             numeric = float(value)
         except (TypeError, ValueError):
@@ -606,6 +686,7 @@ class ApartmentView(tk.Frame):
         compact=False,
         center_content=False,
     ):
+        # Reusable popup used across the page for details, success messages, and errors.
         popup = ctk.CTkToplevel(self)
         popup.title(title)
         popup.configure(fg_color="#FFFFFF")
@@ -627,7 +708,8 @@ class ApartmentView(tk.Frame):
                 self._property_popup_icon = full_icon
                 popup.iconphoto(True, self._property_popup_icon)
 
-                # Use a much smaller in-popup image so it doesn't cover the whole modal.
+                # The window icon can stay full size, but the visible image inside the popup
+                # needs to be reduced so it does not dominate the modal.
                 max_size = icon_size
                 width = max(full_icon.width(), 1)
                 height = max(full_icon.height(), 1)
@@ -635,7 +717,7 @@ class ApartmentView(tk.Frame):
                 scale = int(ratio)
                 self._property_popup_image = full_icon.subsample(scale, scale)
 
-                # HighDPI-safe CTk image for CTkLabel (prevents CTk warning).
+                # Use CTkImage when PIL is available to avoid HighDPI scaling warnings.
                 if PIL_AVAILABLE:
                     pil_image = Image.open(icon_path).convert("RGBA")
                     self._property_popup_ctk_image = ctk.CTkImage(
@@ -645,6 +727,7 @@ class ApartmentView(tk.Frame):
                 else:
                     self._property_popup_ctk_image = None
             except Exception:
+                # If image loading fails, still show the popup without the icon.
                 self._property_popup_icon = None
                 self._property_popup_image = None
                 self._property_popup_ctk_image = None
@@ -694,6 +777,7 @@ class ApartmentView(tk.Frame):
         self._show_property_popup("Error", [message])
 
     def _show_confirm_popup(self, title, message):
+        # Custom confirm dialog so the UI style stays consistent with the rest of the app.
         popup = ctk.CTkToplevel(self)
         popup.title(title)
         popup.configure(fg_color="#FFFFFF")
@@ -761,6 +845,10 @@ class ApartmentView(tk.Frame):
         return choice["confirmed"]
 
     def _assign_apartment(self, apartment):
+        if not self.can_create_leases:
+            self._show_error_popup("Your role can view apartment occupancy but cannot assign leases.")
+            return
+        # If lease management is available, send the user there directly.
         if callable(self.open_lease_management):
             self.open_lease_management()
             return
@@ -822,12 +910,21 @@ class ApartmentView(tk.Frame):
         )
 
     def _open_add_dialog(self):
+        if not self.can_modify_apartments:
+            self._show_error_popup("Your role has read-only access to apartment records.")
+            return
         self._open_apartment_dialog(mode="add")
 
     def _open_edit_dialog(self, apartment):
+        if not self.can_modify_apartments:
+            self._show_error_popup("Your role has read-only access to apartment records.")
+            return
         self._open_apartment_dialog(mode="edit", apartment=apartment)
 
     def _open_apartment_dialog(self, mode, apartment=None):
+        if not self.can_modify_apartments:
+            self._show_error_popup("Your role has read-only access to apartment records.")
+            return
         dialog = ctk.CTkToplevel(self)
         dialog.title("Add Apartment" if mode == "add" else "Edit Apartment")
         dialog.configure(fg_color=self.PAGE_BG)
@@ -924,18 +1021,21 @@ class ApartmentView(tk.Frame):
             location_combo.set(first_city)
 
         if mode == "edit" and apartment:
+            # Pre-fill form fields so the user can edit existing values directly.
             location_combo.set(str(self._read(apartment, "city", "")))
             type_entry.insert(0, str(self._read(apartment, "type", "")))
             rent_entry.insert(0, str(self._read(apartment, "rent", "")))
             rooms_entry.insert(0, str(self._read(apartment, "rooms", "")))
 
         if not self.is_admin:
+            # Restrict non-admin users to their assigned location.
             location_combo.configure(state="disabled")
 
         actions = ctk.CTkFrame(form, fg_color="transparent")
         actions.pack(fill="x", padx=12, pady=(2, 12))
 
         def submit():
+            # Validate user input before calling the controller.
             selected_city = location_combo.get().strip()
             if not selected_city:
                 self._show_error_popup("Location is required.")
@@ -973,18 +1073,22 @@ class ApartmentView(tk.Frame):
 
             location_id = self.location_map[selected_city]
 
-            if mode == "add":
-                ApartmentController.add_apartment(location_id, apt_type, rent_value, rooms_value)
-                self._show_property_popup("Success", ["Apartment added successfully."])
-            else:
-                ApartmentController.update_apartment(
-                    apartment["apartmentID"],
-                    location_id,
-                    apt_type,
-                    rent_value,
-                    rooms_value,
-                )
-                self._show_property_popup("Updated", ["Apartment updated successfully."])
+            try:
+                if mode == "add":
+                    ApartmentController.add_apartment(location_id, apt_type, rent_value, rooms_value)
+                    self._show_property_popup("Success", ["Apartment added successfully."])
+                else:
+                    ApartmentController.update_apartment(
+                        apartment["apartmentID"],
+                        location_id,
+                        apt_type,
+                        rent_value,
+                        rooms_value,
+                    )
+                    self._show_property_popup("Updated", ["Apartment updated successfully."])
+            except Exception as error:
+                self._show_error_popup(f"Unable to save apartment. {error}")
+                return
 
             dialog.destroy()
             self.load_apartments()
@@ -1025,7 +1129,17 @@ class ApartmentView(tk.Frame):
                 )
                 if not confirmed:
                     return
-                ApartmentController.delete_apartment(apartment["apartmentID"])
+                try:
+                    ApartmentController.delete_apartment(apartment["apartmentID"])
+                except Exception as error:
+                    error_text = str(error)
+                    if "FOREIGN KEY" in error_text.upper():
+                        self._show_error_popup(
+                            "Cannot delete this apartment because it has related records (lease/payment/history)."
+                        )
+                    else:
+                        self._show_error_popup(f"Unable to delete apartment. {error_text}")
+                    return
                 dialog.destroy()
                 self.load_apartments()
                 self._show_property_popup("Deleted", ["Apartment deleted successfully."])
