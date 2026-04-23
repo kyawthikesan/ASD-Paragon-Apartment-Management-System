@@ -52,6 +52,7 @@ class LeaseView(tk.Frame):
         open_user_management=None,
         open_tenant_management=None,
         open_apartment_management=None,
+        open_maintenance_dashboard=None,
         open_finance_payments=None,
         open_finance_reports=None,
     ):
@@ -62,10 +63,12 @@ class LeaseView(tk.Frame):
         self.open_user_management = open_user_management or back_callback
         self.open_tenant_management = open_tenant_management or back_callback
         self.open_apartment_management = open_apartment_management or back_callback
+        self.open_maintenance_dashboard = open_maintenance_dashboard or back_callback
         self.open_finance_payments = open_finance_payments or back_callback
         self.open_finance_reports = open_finance_reports or back_callback
         self.city_scope = AuthController.get_city_scope()
         self.role = AuthController.get_current_role()
+        self.can_create_leases = AuthController.can_perform_action("create_leases", self.role)
 
         self.active_filter = "All"
         self.search_text = ""
@@ -98,10 +101,19 @@ class LeaseView(tk.Frame):
 
         if AuthController.can_access_feature("finance_dashboard", self.role):
             nav_sections[2]["items"].append(
-                {"label": "Payments", "action": self.open_finance_payments, "icon": "payments"}
+                {
+                    "label": "Payments & Reports",
+                    "action": self.open_finance_payments,
+                    "icon": "payments",
+                }
             )
-            nav_sections[2]["items"].append(
-                {"label": "Reports", "action": self.open_finance_reports, "icon": "reports"}
+        if AuthController.can_access_feature("maintenance_management", self.role):
+            nav_sections[1]["items"].append(
+                {
+                    "label": "Maintenance",
+                    "action": self.open_maintenance_dashboard,
+                    "icon": "maintenance",
+                }
             )
 
         nav_sections[3]["items"].append(
@@ -435,20 +447,21 @@ class LeaseView(tk.Frame):
             anchor="w",
         ).pack(side="left")
 
-        ctk.CTkButton(
-            header,
-            text="+ New Lease",
-            width=132,
-            height=36,
-            corner_radius=16,
-            fg_color=self.SURFACE_SOFT,
-            hover_color="#EEE7DA",
-            text_color=self.TEXT,
-            border_width=1,
-            border_color="#D1C2AA",
-            font=("Segoe UI", 13, "bold"),
-            command=self._open_create_lease_modal,
-        ).pack(side="right")
+        if self.can_create_leases:
+            ctk.CTkButton(
+                header,
+                text="+ New Lease",
+                width=132,
+                height=36,
+                corner_radius=16,
+                fg_color=self.SURFACE_SOFT,
+                hover_color="#EEE7DA",
+                text_color=self.TEXT,
+                border_width=1,
+                border_color="#D1C2AA",
+                font=("Segoe UI", 13, "bold"),
+                command=self._open_create_lease_modal,
+            ).pack(side="right")
 
         filters = ctk.CTkFrame(self.left_panel, fg_color="transparent")
         filters.pack(fill="x", padx=14, pady=(0, 10))
@@ -1390,6 +1403,9 @@ class LeaseView(tk.Frame):
         ).pack(pady=(0, 18))
 
     def _open_create_lease_modal(self):
+        if not self.can_create_leases:
+            self._show_popup("Read-only Access", "Your role can view leases but cannot create new leases.", "warning")
+            return
         self.load_tenants()
         self.load_available_apartments()
 
@@ -1529,6 +1545,9 @@ class LeaseView(tk.Frame):
         ).pack(side="right")
 
     def _submit_create_lease(self, modal, tenant_display, apartment_display, start_date, end_date):
+        if not self.can_create_leases:
+            self._show_popup("Read-only Access", "Your role can view leases but cannot create new leases.", "warning")
+            return
         tenant_id = self.tenant_map.get(tenant_display)
         apartment_id = self.apartment_map.get(apartment_display)
 

@@ -160,16 +160,20 @@ class UserManagementView(ctk.CTkFrame):
             management_items.append(
                 {"label": "Leases", "action": self.open_lease_management, "icon": "leases"}
             )
-        if AuthController.can_access_feature("maintenance_dashboard"):
+        if AuthController.can_access_feature("maintenance_management"):
             management_items.append(
-                {"label": "Maintenance", "action": self.open_maintenance_dashboard, "icon": "openissues"}
+                {"label": "Maintenance", "action": self.open_maintenance_dashboard, "icon": "maintenance"}
             )
 
         finance_items = []
-        if AuthController.can_access_feature("payment_management"):
-            finance_items.append({"label": "Payments", "action": self.open_finance_payments, "icon": "payments"})
-        if AuthController.can_access_feature("reports"):
-            finance_items.append({"label": "Reports", "action": self.open_finance_reports, "icon": "reports"})
+        if AuthController.can_access_feature("finance_dashboard"):
+            finance_items.append(
+                {
+                    "label": "Payments & Reports",
+                    "action": self.open_finance_payments,
+                    "icon": "payments",
+                }
+            )
 
         # Shared premium shell provides common layout structure and header tools.
         self.shell = PremiumAppShell(

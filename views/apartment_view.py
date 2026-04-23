@@ -113,6 +113,8 @@ class ApartmentView(tk.Frame):
         self.is_admin = AuthController.is_admin()
         self.city_scope = AuthController.get_city_scope()
         self.role = AuthController.get_current_role()
+        self.can_modify_apartments = AuthController.can_perform_action("edit_apartments", self.role)
+        self.can_create_leases = AuthController.can_perform_action("create_leases", self.role)
         self.open_lease_management = open_lease_management
         self.open_user_management = open_user_management or back_callback
         self.open_tenant_management = open_tenant_management or back_callback
@@ -145,10 +147,6 @@ class ApartmentView(tk.Frame):
         ]
 
         # Build sidebar items based on the logged-in user's permissions.
-        if AuthController.can_access_feature("maintenance_management", self.role):
-            nav_sections[1]["items"].append(
-                {"label": "Maintenance", "action": self.open_maintenance_dashboard, "icon": "maintenance"}
-            )
         if AuthController.can_access_feature("lease_management", self.role):
             nav_sections[1]["items"].append(
                 {
@@ -157,12 +155,17 @@ class ApartmentView(tk.Frame):
                     "icon": "leases",
                 }
             )
+        if AuthController.can_access_feature("maintenance_management", self.role):
+            nav_sections[1]["items"].append(
+                {"label": "Maintenance", "action": self.open_maintenance_dashboard, "icon": "maintenance"}
+            )
         if AuthController.can_access_feature("finance_dashboard", self.role):
             nav_sections[2]["items"].append(
-                {"label": "Payments", "action": self.open_finance_payments, "icon": "payments"}
-            )
-            nav_sections[2]["items"].append(
-                {"label": "Reports", "action": self.open_finance_reports, "icon": "reports"}
+                {
+                    "label": "Payments & Reports",
+                    "action": self.open_finance_payments,
+                    "icon": "payments",
+                }
             )
         # Keep User Access visible for consistent sidebar layout across roles.
         nav_sections[3]["items"].append(
@@ -222,20 +225,21 @@ class ApartmentView(tk.Frame):
             self.filter_buttons[label] = btn
         self._refresh_filter_styles()
 
-        ctk.CTkButton(
-            filter_row,
-            text="+ Add Apartment",
-            height=38,
-            width=188,
-            corner_radius=16,
-            fg_color="#F3EEE5",
-            hover_color="#ECE2D2",
-            text_color=self.TEXT,
-            border_width=1,
-            border_color="#CDBEA6",
-            font=("Segoe UI", 13, "bold"),
-            command=self._open_add_dialog,
-        ).pack(side="right")
+        if self.can_modify_apartments:
+            ctk.CTkButton(
+                filter_row,
+                text="+ Add Apartment",
+                height=38,
+                width=188,
+                corner_radius=16,
+                fg_color="#F3EEE5",
+                hover_color="#ECE2D2",
+                text_color=self.TEXT,
+                border_width=1,
+                border_color="#CDBEA6",
+                font=("Segoe UI", 13, "bold"),
+                command=self._open_add_dialog,
+            ).pack(side="right")
 
         # Main list container for apartment cards.
         self.list_wrap = ctk.CTkFrame(
@@ -562,7 +566,7 @@ class ApartmentView(tk.Frame):
             font=("Segoe UI", 10, "bold"),
             command=lambda unit=apartment: self._show_unit_details(unit),
         ).pack(side="left", padx=(0, 6))
-        if status == "Vacant":
+        if status == "Vacant" and self.can_create_leases:
             # Vacant units get a quick shortcut to assignment.
             ctk.CTkButton(
                 actions,
@@ -578,7 +582,7 @@ class ApartmentView(tk.Frame):
                 font=("Segoe UI", 10, "bold"),
                 command=lambda unit=apartment: self._assign_apartment(unit),
             ).pack(side="left")
-        else:
+        elif self.can_modify_apartments:
             ctk.CTkButton(
                 actions,
                 text="Edit",
@@ -816,6 +820,9 @@ class ApartmentView(tk.Frame):
         return choice["confirmed"]
 
     def _assign_apartment(self, apartment):
+        if not self.can_create_leases:
+            self._show_error_popup("Your role can view apartment occupancy but cannot assign leases.")
+            return
         # If lease management is available, send the user there directly.
         if callable(self.open_lease_management):
             self.open_lease_management()
@@ -878,12 +885,21 @@ class ApartmentView(tk.Frame):
         )
 
     def _open_add_dialog(self):
+        if not self.can_modify_apartments:
+            self._show_error_popup("Your role has read-only access to apartment records.")
+            return
         self._open_apartment_dialog(mode="add")
 
     def _open_edit_dialog(self, apartment):
+        if not self.can_modify_apartments:
+            self._show_error_popup("Your role has read-only access to apartment records.")
+            return
         self._open_apartment_dialog(mode="edit", apartment=apartment)
 
     def _open_apartment_dialog(self, mode, apartment=None):
+        if not self.can_modify_apartments:
+            self._show_error_popup("Your role has read-only access to apartment records.")
+            return
         dialog = ctk.CTkToplevel(self)
         dialog.title("Add Apartment" if mode == "add" else "Edit Apartment")
         dialog.configure(fg_color=self.PAGE_BG)

@@ -9,12 +9,21 @@ class AuthController:
         "tenant_management": {"admin", "manager", "front_desk"},
         "apartment_management": {"admin", "manager", "front_desk"},
         "lease_management": {"admin", "manager", "front_desk"},
-        "finance_dashboard": {"admin", "finance"},
+        "finance_dashboard": {"admin", "finance", "manager"},
         "maintenance_dashboard": {"admin", "manager", "front_desk", "maintenance"},
         # Compatibility keys used by some views/controllers.
         "payment_management": {"admin", "finance"},
-        "reports": {"admin", "finance"},
+        "reports": {"admin", "finance", "manager"},
         "maintenance_management": {"admin", "manager", "front_desk", "maintenance"},
+    }
+    ACTION_ACCESS = {
+        "register_tenants": {"admin", "front_desk"},
+        "create_leases": {"admin", "front_desk"},
+        "edit_apartments": {"admin"},
+        "process_payments": {"admin", "finance"},
+        "log_maintenance": {"admin", "front_desk"},
+        "schedule_maintenance": {"admin", "maintenance"},
+        "resolve_maintenance": {"maintenance"},
     }
 
     @staticmethod
@@ -118,3 +127,10 @@ class AuthController:
         if not role_name:
             return False
         return role_name in AuthController.FEATURE_ACCESS.get(feature_key, set())
+
+    @staticmethod
+    def can_perform_action(action_key: str, role: str | None = None) -> bool:
+        role_name = (role or AuthController.get_current_role() or "").strip().lower()
+        if not role_name:
+            return False
+        return role_name in AuthController.ACTION_ACCESS.get(action_key, set())

@@ -38,16 +38,16 @@ class UserDAO:
         "maintenance": {
             "register_tenants": 0,
             "manage_payments": 0,
-            "log_maintenance": 1,
+            "log_maintenance": 0,
             "generate_reports": 0,
             "manage_user_accounts": 0,
         },
         "manager": {
-            "register_tenants": 1,
-            "manage_payments": 1,
-            "log_maintenance": 1,
+            "register_tenants": 0,
+            "manage_payments": 0,
+            "log_maintenance": 0,
             "generate_reports": 1,
-            "manage_user_accounts": 1,
+            "manage_user_accounts": 0,
         },
     }
 
@@ -81,6 +81,26 @@ class UserDAO:
                             permission_key,
                             int(permissions.get(permission_key, 0)),
                         )
+                    )
+            # Enforce manager role as read-only for operational actions.
+            manager = conn.execute(
+                "SELECT id FROM roles WHERE role_name = 'manager'"
+            ).fetchone()
+            if manager is not None:
+                manager_defaults = UserDAO.DEFAULT_ROLE_PERMISSIONS["manager"]
+                for permission_key in UserDAO.PERMISSION_KEYS:
+                    conn.execute(
+                        """
+                        INSERT INTO role_permissions (role_id, permission_key, allowed)
+                        VALUES (?, ?, ?)
+                        ON CONFLICT(role_id, permission_key)
+                        DO UPDATE SET allowed = excluded.allowed
+                        """,
+                        (
+                            manager["id"],
+                            permission_key,
+                            int(manager_defaults.get(permission_key, 0)),
+                        ),
                     )
             conn.commit()
         finally:

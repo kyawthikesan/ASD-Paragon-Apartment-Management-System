@@ -294,18 +294,19 @@ class DashboardView(tk.Frame):
             anchor="w",
         ).pack(fill="x", pady=(6, 0))
 
-        ctk.CTkButton(
-            banner,
-            text="+  Register Tenant",
-            command=open_tenant_management,
-            fg_color="#D4AF4D",
-            hover_color="#C29D3D",
-            text_color="#241D12",
-            corner_radius=14,
-            font=("Arial", 14, "bold"),
-            height=48,
-            width=180,
-        ).pack(side="right", padx=20, pady=20)
+        if AuthController.can_perform_action("register_tenants", self.role):
+            ctk.CTkButton(
+                banner,
+                text="+  Register Tenant",
+                command=open_tenant_management,
+                fg_color="#D4AF4D",
+                hover_color="#C29D3D",
+                text_color="#241D12",
+                corner_radius=14,
+                font=("Arial", 14, "bold"),
+                height=48,
+                width=180,
+            ).pack(side="right", padx=20, pady=20)
 
     def _build_stats(self, parent):
         # Summary cards across the top of the dashboard.

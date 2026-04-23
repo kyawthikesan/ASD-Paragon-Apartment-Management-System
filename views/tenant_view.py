@@ -14,9 +14,7 @@ from datetime import datetime, date
 import customtkinter as ctk
 
 from controllers.tenant_controller import TenantController
-from controllers.lease_controller import LeaseController
 from controllers.auth_controller import AuthController
-from dao.apartment_dao import ApartmentDAO
 from views.premium_shell import PremiumAppShell
 
 
@@ -47,6 +45,8 @@ class TenantView(tk.Frame):
         open_user_management=None,
         open_apartment_management=None,
         open_lease_management=None,
+        open_maintenance_dashboard=None,
+        open_maintenance_management=None,
         open_finance_payments=None,
         open_finance_reports=None,
     ):
@@ -55,17 +55,20 @@ class TenantView(tk.Frame):
 
         self.city_scope = AuthController.get_city_scope()
         self.role = AuthController.get_current_role()
+        self.can_manage_tenants = AuthController.can_perform_action("register_tenants", self.role)
         self.active_filter = "All Tenants"
         self.search_text = ""
         self.selected_tenant_id = None
         self.current_tenants = []
-        self.available_apartment_map = {}
         self.current_edit_tenant = None
-        self._cards_default_height = 350
-        self._cards_compact_height = 130
         self.open_user_management = open_user_management or back_callback
         self.open_apartment_management = open_apartment_management or back_callback
         self.open_lease_management = open_lease_management or back_callback
+        self.open_maintenance_management = (
+            open_maintenance_dashboard
+            or open_maintenance_management
+            or back_callback
+        )
         self.open_finance_payments = open_finance_payments or back_callback
         self.open_finance_reports = open_finance_reports or back_callback
 
@@ -95,12 +98,21 @@ class TenantView(tk.Frame):
             nav_sections[1]["items"].append(
                 {"label": "Leases", "action": self.open_lease_management, "icon": "leases"}
             )
+        if AuthController.can_access_feature("maintenance_management", self.role):
+            nav_sections[1]["items"].append(
+                {
+                    "label": "Maintenance",
+                    "action": self.open_maintenance_management,
+                    "icon": "maintenance",
+                }
+            )
         if AuthController.can_access_feature("finance_dashboard", self.role):
             nav_sections[2]["items"].append(
-                {"label": "Payments", "action": self.open_finance_payments, "icon": "payments"}
-            )
-            nav_sections[2]["items"].append(
-                {"label": "Reports", "action": self.open_finance_reports, "icon": "reports"}
+                {
+                    "label": "Payments & Reports",
+                    "action": self.open_finance_payments,
+                    "icon": "payments",
+                }
             )
         nav_sections[3]["items"].append(
             {"label": "User Access", "action": self.open_user_management, "icon": "shield"}
@@ -122,8 +134,6 @@ class TenantView(tk.Frame):
 
         self.content = self.shell.content
         self._build_ui()
-
-        self._refresh_available_apartments()
         self.load_tenants()
 
     def _build_ui(self):
@@ -148,21 +158,24 @@ class TenantView(tk.Frame):
 
         self._refresh_filter_styles()
 
-        self.register_btn = ctk.CTkButton(
-            filter_row,
-            text="+ Register New Tenant",
-            height=40,
-            width=216,
-            corner_radius=20,
-            fg_color="#F2ECE0",
-            text_color=self.TEXT,
-            border_width=1,
-            border_color="#D0C1A8",
-            hover_color="#EADFCF",
-            font=("Segoe UI", 15, "bold"),
-            command=self._open_register_form,
-        )
-        self.register_btn.pack(side="right")
+        if self.can_manage_tenants:
+            self.register_btn = ctk.CTkButton(
+                filter_row,
+                text="+ Register New Tenant",
+                height=40,
+                width=216,
+                corner_radius=20,
+                fg_color="#F2ECE0",
+                text_color=self.TEXT,
+                border_width=1,
+                border_color="#D0C1A8",
+                hover_color="#EADFCF",
+                font=("Segoe UI", 15, "bold"),
+                command=self._open_register_form,
+            )
+            self.register_btn.pack(side="right")
+        else:
+            self.register_btn = None
 
         self.cards_wrap = ctk.CTkFrame(
             self.content,
@@ -170,10 +183,8 @@ class TenantView(tk.Frame):
             corner_radius=18,
             border_width=1,
             border_color=self.BORDER,
-            height=self._cards_default_height,
         )
         self.cards_wrap.pack(fill="both", expand=True, pady=(0, 12))
-        self.cards_wrap.pack_propagate(False)
 
         self.cards_area = ctk.CTkScrollableFrame(
             self.cards_wrap,
@@ -181,12 +192,13 @@ class TenantView(tk.Frame):
             corner_radius=0,
             scrollbar_button_color="#D7C8AE",
             scrollbar_button_hover_color="#C8B28F",
-            height=self._cards_default_height,
         )
         self.cards_area.pack(fill="both", expand=True, padx=10, pady=10)
         self.cards_area.grid_columnconfigure(0, weight=1)
         self.cards_area.grid_columnconfigure(1, weight=1)
         self.cards_area.grid_columnconfigure(2, weight=1)
+        self._bind_scroll_recursive(self.cards_area)
+        self._enable_global_cards_scroll()
 
         self.form_card = ctk.CTkFrame(
             self.content,
@@ -247,13 +259,7 @@ class TenantView(tk.Frame):
 
         self.email = self._make_entry(fields, "EMAIL ADDRESS", "john@gmail.com", 1, 0)
         self.occupation = self._make_entry(fields, "OCCUPATION", "e.g. Teacher", 1, 1)
-        self.unit_combo = self._make_combo(fields, "ASSIGNED UNIT", [], 1, 2)
-
-        self.lease_start = self._make_entry(fields, "LEASE START", "DD/MM/YYYY", 2, 0)
-        self.lease_end = self._make_entry(fields, "LEASE END", "DD/MM/YYYY", 2, 1)
-        self.lease_start.bind("<KeyRelease>", lambda _event, widget=self.lease_start: self._enforce_date_format(widget))
-        self.lease_end.bind("<KeyRelease>", lambda _event, widget=self.lease_end: self._enforce_date_format(widget))
-        self.reference = self._make_entry(fields, "REFERENCES", "Employer / previous landlord", 2, 2)
+        self.reference = self._make_entry(fields, "REFERENCES", "Employer / previous landlord", 1, 2)
 
         ctk.CTkFrame(self.form_card, fg_color="#D9CDB8", height=1).pack(fill="x", pady=(6, 6))
 
@@ -334,40 +340,6 @@ class TenantView(tk.Frame):
         entry.pack(fill="x")
         return entry
 
-    def _make_combo(self, parent, label, values, row, col):
-        wrap = ctk.CTkFrame(parent, fg_color="transparent")
-        wrap.grid(row=row, column=col, sticky="ew", padx=4, pady=2)
-
-        ctk.CTkLabel(
-            wrap,
-            text=label,
-            text_color=self.LABEL,
-            font=("Segoe UI", 10, "bold"),
-            anchor="w",
-        ).pack(anchor="w", pady=(0, 2))
-
-        combo = ctk.CTkComboBox(
-            wrap,
-            values=values,
-            height=30,
-            corner_radius=8,
-            border_width=1,
-            border_color="#C7B99F",
-            fg_color="#FFFCF7",
-            button_color="#EDE3D2",
-            button_hover_color="#E1D3BB",
-            dropdown_fg_color="#FFFCF7",
-            dropdown_hover_color="#F1E6D3",
-            dropdown_text_color="#2B2419",
-            text_color="#2B2419",
-            font=("Segoe UI", 10),
-            dropdown_font=("Segoe UI", 10),
-            state="readonly",
-        )
-        combo.set("Select apartment...")
-        combo.pack(fill="x")
-        return combo
-
     def _set_filter(self, label):
         self.active_filter = label
         self._refresh_filter_styles()
@@ -392,12 +364,11 @@ class TenantView(tk.Frame):
                 )
 
     def _open_register_form(self, reset=True):
+        if not self.can_manage_tenants:
+            messagebox.showwarning("Read-only Access", "Your role can view tenant records but cannot modify them.")
+            return
         if reset:
             self.clear_fields()
-        self._refresh_available_apartments()
-        self.cards_wrap.configure(height=self._cards_compact_height + 20)
-        self.cards_area.configure(height=self._cards_compact_height)
-        self.cards_area.pack_configure(fill="x", expand=False, padx=10, pady=8)
         if not self.form_visible:
             self.form_card.pack(fill="x", pady=(0, 0))
             self.form_visible = True
@@ -405,9 +376,6 @@ class TenantView(tk.Frame):
 
     def _close_form(self):
         self.clear_fields()
-        self.cards_wrap.configure(height=self._cards_default_height)
-        self.cards_area.configure(height=self._cards_default_height)
-        self.cards_area.pack_configure(fill="both", expand=True, padx=10, pady=10)
         self.form_card.pack_forget()
         self.form_visible = False
 
@@ -516,6 +484,7 @@ class TenantView(tk.Frame):
             col = index % 3
             card = self._build_tenant_card(self.cards_area, tenant, index)
             card.grid(row=row, column=col, sticky="n", padx=8, pady=6)
+            self._bind_scroll_recursive(card)
 
     def _filtered_tenants(self, tenants):
         output = []
@@ -648,7 +617,76 @@ class TenantView(tk.Frame):
         for child in widget.winfo_children():
             self._bind_click_recursive(child, callback)
 
+    def _bind_scroll_recursive(self, widget):
+        widget.bind("<MouseWheel>", self._on_cards_mousewheel, add="+")
+        widget.bind("<Button-4>", self._on_cards_mousewheel_up, add="+")
+        widget.bind("<Button-5>", self._on_cards_mousewheel_down, add="+")
+        for child in widget.winfo_children():
+            self._bind_scroll_recursive(child)
+
+    def _enable_global_cards_scroll(self):
+        # Make wheel scrolling reliable even when nested widgets steal focus.
+        self.bind_all("<MouseWheel>", self._on_global_cards_mousewheel, add="+")
+        self.bind_all("<Button-4>", self._on_global_cards_mousewheel_up, add="+")
+        self.bind_all("<Button-5>", self._on_global_cards_mousewheel_down, add="+")
+        self.bind("<Destroy>", self._on_view_destroy, add="+")
+
+    def _on_view_destroy(self, event=None):
+        # Remove global bindings when this view is destroyed.
+        if event is not None and event.widget is not self:
+            return
+        try:
+            self.unbind_all("<MouseWheel>")
+            self.unbind_all("<Button-4>")
+            self.unbind_all("<Button-5>")
+        except Exception:
+            pass
+
+    def _pointer_inside_cards(self):
+        if not hasattr(self, "cards_wrap") or not self.cards_wrap.winfo_exists():
+            return False
+        px, py = self.winfo_pointerx(), self.winfo_pointery()
+        x = self.cards_wrap.winfo_rootx()
+        y = self.cards_wrap.winfo_rooty()
+        w = self.cards_wrap.winfo_width()
+        h = self.cards_wrap.winfo_height()
+        return x <= px <= (x + w) and y <= py <= (y + h)
+
+    def _scroll_cards(self, units):
+        canvas = getattr(self.cards_area, "_parent_canvas", None)
+        if canvas is not None:
+            canvas.yview_scroll(units, "units")
+
+    def _on_cards_mousewheel(self, event):
+        # Windows/macOS mouse wheel
+        if getattr(event, "delta", 0) == 0:
+            return
+        step = -1 if event.delta > 0 else 1
+        self._scroll_cards(step)
+
+    def _on_cards_mousewheel_up(self, _event):
+        # Linux wheel up
+        self._scroll_cards(-1)
+
+    def _on_cards_mousewheel_down(self, _event):
+        # Linux wheel down
+        self._scroll_cards(1)
+
+    def _on_global_cards_mousewheel(self, event):
+        if self._pointer_inside_cards():
+            self._on_cards_mousewheel(event)
+
+    def _on_global_cards_mousewheel_up(self, event):
+        if self._pointer_inside_cards():
+            self._on_cards_mousewheel_up(event)
+
+    def _on_global_cards_mousewheel_down(self, event):
+        if self._pointer_inside_cards():
+            self._on_cards_mousewheel_down(event)
+
     def _select_tenant(self, tenant):
+        if not self.can_manage_tenants:
+            return
         self.current_edit_tenant = tenant
         self.selected_tenant_id = tenant.get("tenantID")
 
@@ -665,31 +703,6 @@ class TenantView(tk.Frame):
         self._set_entry_value(self.email, tenant.get("email", ""))
         self._set_entry_value(self.occupation, "")
         self._set_entry_value(self.reference, tenant.get("email") or "")
-
-        start = self._to_ddmmyyyy(tenant.get("start_date"))
-        end = self._to_ddmmyyyy(tenant.get("end_date"))
-        self._set_entry_value(self.lease_start, start)
-        self._set_entry_value(self.lease_end, end)
-
-        assigned_value = self._unit_combo_value_for_tenant(tenant)
-        if assigned_value:
-            if assigned_value not in self.available_apartment_map:
-                apt_id = tenant.get("apartmentID")
-                if apt_id:
-                    self.available_apartment_map[assigned_value] = int(apt_id)
-                    self.unit_combo.configure(values=list(self.available_apartment_map.keys()))
-            self.unit_combo.set(assigned_value)
-        else:
-            self.unit_combo.set("Select apartment...")
-
-    def _unit_combo_value_for_tenant(self, tenant):
-        apartment_id = tenant.get("apartmentID")
-        city = tenant.get("city") or "Unknown"
-        apt_type = tenant.get("apartment_type") or "Unit"
-
-        if not apartment_id:
-            return ""
-        return f"#{apartment_id} · {apt_type} · {city}"
 
     def _set_entry_value(self, entry, value):
         entry.delete(0, tk.END)
@@ -711,22 +724,6 @@ class TenantView(tk.Frame):
         if current != cleaned:
             entry.delete(0, tk.END)
             entry.insert(0, cleaned)
-            entry.icursor(tk.END)
-
-    def _enforce_date_format(self, entry):
-        current = entry.get()
-        digits = "".join(ch for ch in current if ch.isdigit())[:8]
-
-        if len(digits) <= 2:
-            formatted = digits
-        elif len(digits) <= 4:
-            formatted = f"{digits[:2]}/{digits[2:]}"
-        else:
-            formatted = f"{digits[:2]}/{digits[2:4]}/{digits[4:]}"
-
-        if current != formatted:
-            entry.delete(0, tk.END)
-            entry.insert(0, formatted)
             entry.icursor(tk.END)
 
     def _show_success_modal(self, title, message):
@@ -823,6 +820,9 @@ class TenantView(tk.Frame):
         modal.grab_set()
 
     def add_tenant(self):
+        if not self.can_manage_tenants:
+            messagebox.showwarning("Read-only Access", "Your role can view tenant records but cannot modify them.")
+            return
         name = self.name.get().strip()
         ni_number = self.NI_number.get().strip().upper()
         phone = self.phone.get().strip()
@@ -853,53 +853,15 @@ class TenantView(tk.Frame):
             messagebox.showerror("Error", f"Unable to add tenant: {exc}")
             return
 
-        lease_result = self._create_lease_for_new_tenant_if_needed(ni_number)
-
-        if lease_result and lease_result != "Success":
-            messagebox.showwarning(
-                "Tenant Added",
-                f"Tenant was added, but lease could not be created: {lease_result}",
-            )
-        else:
-            self._show_success_modal("Success", "Tenant registered")
+        self._show_success_modal("Success", "Tenant registered")
 
         self.load_tenants()
         self.clear_fields()
 
-    def _create_lease_for_new_tenant_if_needed(self, ni_number):
-        selected_unit = self.unit_combo.get().strip()
-        start_raw = self.lease_start.get().strip()
-        end_raw = self.lease_end.get().strip()
-
-        if selected_unit == "Select apartment..." and not start_raw and not end_raw:
-            return ""
-
-        if selected_unit == "Select apartment..." or not start_raw or not end_raw:
-            return "Assigned unit, lease start and lease end are all required to create a lease"
-
-        apartment_id = self.available_apartment_map.get(selected_unit)
-        if not apartment_id:
-            return "Selected apartment is not available"
-
-        start_date = self._normalize_date_for_db(start_raw)
-        end_date = self._normalize_date_for_db(end_raw)
-
-        if not start_date or not end_date:
-            return "Dates must be in DD/MM/YYYY format"
-
-        latest = TenantController.get_all_tenants(city=self.city_scope)
-        tenant_id = None
-        for row in latest:
-            if str(row.get("NI_number", "")).upper() == ni_number:
-                tenant_id = row.get("tenantID")
-                break
-
-        if not tenant_id:
-            return "Could not locate tenant after registration"
-
-        return LeaseController.create_lease(tenant_id, apartment_id, start_date, end_date)
-
     def delete_tenant(self):
+        if not self.can_manage_tenants:
+            messagebox.showwarning("Read-only Access", "Your role can view tenant records but cannot modify them.")
+            return
         if not self.selected_tenant_id:
             messagebox.showerror("Error", "Please select a tenant card first")
             return
@@ -918,12 +880,10 @@ class TenantView(tk.Frame):
         self.selected_tenant_id = None
         self.current_edit_tenant = None
 
-        for entry in [self.name, self.NI_number, self.phone, self.email, self.occupation, self.lease_start, self.lease_end, self.reference]:
+        for entry in [self.name, self.NI_number, self.phone, self.email, self.occupation, self.reference]:
             entry.delete(0, tk.END)
 
         self._refresh_placeholders()
-
-        self.unit_combo.set("Select apartment...")
 
         self.form_title.configure(text="Register New Tenant")
         self.primary_btn.configure(text="Register Tenant")
@@ -937,34 +897,7 @@ class TenantView(tk.Frame):
         self.phone.configure(placeholder_text="07700000000")
         self.email.configure(placeholder_text="john@gmail.com")
         self.occupation.configure(placeholder_text="e.g. Teacher")
-        self.lease_start.configure(placeholder_text="DD/MM/YYYY")
-        self.lease_end.configure(placeholder_text="DD/MM/YYYY")
         self.reference.configure(placeholder_text="Employer / previous landlord")
-
-    def _refresh_available_apartments(self):
-        options = []
-        self.available_apartment_map = {}
-
-        for row in ApartmentDAO.get_available_apartments(city=self.city_scope):
-            apartment_id = row[0]
-            city = row[1]
-            apt_type = row[2]
-            label = f"#{apartment_id} · {apt_type} · {city}"
-            options.append(label)
-            self.available_apartment_map[label] = apartment_id
-
-        self.unit_combo.configure(values=options if options else ["No available apartments"])
-
-        if self.current_edit_tenant and self.current_edit_tenant.get("apartmentID"):
-            current_value = self._unit_combo_value_for_tenant(self.current_edit_tenant)
-            if current_value and current_value not in self.available_apartment_map:
-                self.available_apartment_map[current_value] = self.current_edit_tenant.get("apartmentID")
-                self.unit_combo.configure(values=list(self.available_apartment_map.keys()))
-
-        if options:
-            self.unit_combo.set("Select apartment...")
-        else:
-            self.unit_combo.set("No available apartments")
 
     def _display_status(self, tenant):
         raw_status = str(tenant.get("lease_status", "No Lease")).strip().lower()
@@ -1018,13 +951,6 @@ class TenantView(tk.Frame):
         if not parsed:
             return "-"
         return parsed.strftime("%b %d, %Y")
-
-    def _normalize_date_for_db(self, value):
-        try:
-            return datetime.strptime(value, "%d/%m/%Y").strftime("%Y-%m-%d")
-        except ValueError:
-            pass
-        return ""
 
     def _parse_date(self, value):
         if not value:

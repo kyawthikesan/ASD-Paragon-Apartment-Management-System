@@ -619,6 +619,13 @@ class FinanceDashboardView(ttk.Frame):
         """
         Generate a new invoice for the selected lease.
         """
+        if not AuthController.can_perform_action("process_payments"):
+            messagebox.showwarning(
+                "Read-only Access",
+                "Your role can view financial summaries but cannot create invoices.",
+            )
+            return
+
         selected = self.lease_combo.get()
         lease = self.lease_map.get(selected)
 
@@ -698,6 +705,13 @@ class FinanceDashboardView(ttk.Frame):
         """
         Record payment for the selected invoice and show a receipt.
         """
+        if not AuthController.can_perform_action("process_payments"):
+            messagebox.showwarning(
+                "Read-only Access",
+                "Your role can view financial summaries but cannot process payments.",
+            )
+            return
+
         selected = self.open_invoice_combo.get()
         invoice = self.invoice_map.get(selected)
 

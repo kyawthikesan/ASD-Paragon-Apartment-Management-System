@@ -219,6 +219,11 @@ class PAMSApp(tk.Tk):
 
     def show_finance_dashboard(self, initial_tab="Invoices", visible_tabs=None):
         """Open finance dashboard with selected starting tab."""
+        role = str(AuthController.get_current_role() or "").strip().lower()
+        if role == "manager":
+            initial_tab = "Reports"
+            visible_tabs = ("Reports",)
+
         self._show_role_view(
             FinanceDashboardView,
             "Finance Dashboard",
@@ -227,12 +232,19 @@ class PAMSApp(tk.Tk):
         )
 
     def show_finance_payments(self):
+        role = str(AuthController.get_current_role() or "").strip().lower()
+        if role == "manager":
+            self.show_finance_reports()
+            return
         self.show_finance_dashboard("Payments", visible_tabs=("Invoices", "Payments"))
 
     def show_finance_reports(self):
         self.show_finance_dashboard("Reports", visible_tabs=("Reports",))
 
     def show_maintenance_dashboard(self):
+        if not self._require_feature_access("maintenance_management", "Maintenance Dashboard"):
+            return
+
         self._show_role_view(
             MaintenanceDashboardView,
             "Maintenance Dashboard",
@@ -536,6 +548,7 @@ class PAMSApp(tk.Tk):
             open_user_management=self.show_user_management,
             open_apartment_management=self.show_apartment_management,
             open_lease_management=self.show_lease_management,
+            open_maintenance_dashboard=self.show_maintenance_dashboard,
             open_finance_payments=self.show_finance_payments,
             open_finance_reports=self.show_finance_reports,
         )
@@ -568,6 +581,7 @@ class PAMSApp(tk.Tk):
             open_user_management=self.show_user_management,
             open_tenant_management=self.show_tenant_management,
             open_apartment_management=self.show_apartment_management,
+            open_maintenance_dashboard=self.show_maintenance_dashboard,
             open_finance_payments=self.show_finance_payments,
             open_finance_reports=self.show_finance_reports,
         )
