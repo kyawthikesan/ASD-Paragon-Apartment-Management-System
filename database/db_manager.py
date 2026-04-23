@@ -1,3 +1,7 @@
+# Student Name: Nang Phwe Hleng Hun
+# Student ID: 24043841
+# Module: UFCF8S-30-2 Advanced Software Development
+
 import sqlite3
 
 DB_NAME = "pams.db"
