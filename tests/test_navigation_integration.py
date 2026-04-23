@@ -30,6 +30,9 @@ class DummyApp:
     def route_dashboard_by_role(self, role=None):
         self.called = f"route:{role}"
 
+    def _show_access_denied_modal(self, feature_name):
+        self.called = f"denied:{feature_name}"
+
 
 class TestNavigationIntegration(unittest.TestCase):
     def setUp(self):
@@ -61,32 +64,30 @@ class TestNavigationIntegration(unittest.TestCase):
         PAMSApp.route_dashboard_by_role(app, "unknown")
         self.assertEqual(app.called, "logout")
 
-    def test_route_dashboard_by_role_reads_current_user_role(self):
+    @patch("controllers.auth_controller.AuthController.refresh_current_user")
+    def test_route_dashboard_by_role_reads_current_user_role(self, mock_refresh):
         app = DummyApp()
         AuthController.current_user = {"role_name": "manager"}
         PAMSApp.route_dashboard_by_role(app)
         self.assertEqual(app.called, "manager")
 
-    @patch("main.messagebox.showerror")
-    def test_require_feature_access_denies_and_routes_back(self, mock_showerror):
+    def test_require_feature_access_denies_and_routes_back(self):
         app = DummyApp()
         AuthController.current_user = {"role_name": "finance"}
 
         allowed = PAMSApp._require_feature_access(app, "tenant_management", "Tenant Management")
 
         self.assertFalse(allowed)
-        mock_showerror.assert_called_once()
-        self.assertEqual(app.called, "route:finance")
+        self.assertEqual(app.called, "denied:Tenant Management")
 
-    @patch("main.messagebox.showerror")
-    def test_require_feature_access_allows(self, mock_showerror):
+    def test_require_feature_access_allows(self):
         app = DummyApp()
         AuthController.current_user = {"role_name": "admin"}
 
         allowed = PAMSApp._require_feature_access(app, "user_management", "User Management")
 
         self.assertTrue(allowed)
-        mock_showerror.assert_not_called()
+        self.assertIsNone(app.called)
 
 
 if __name__ == "__main__":

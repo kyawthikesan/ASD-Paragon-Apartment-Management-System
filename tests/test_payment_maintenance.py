@@ -5,8 +5,9 @@ import unittest
 from controllers.maintenance_controller import MaintenanceController
 from controllers.payment_controller import PaymentController
 from dao.apartment_dao import ApartmentDAO
+from dao.invoice_dao import InvoiceDAO
+from dao.lease_dao import LeaseDAO
 from dao.location_dao import LocationDAO
-from dao.maintenance_dao import MaintenanceDAO
 from dao.payment_dao import PaymentDAO
 from dao.tenant_dao import TenantDAO
 from database import db_manager
@@ -28,30 +29,49 @@ class TestPaymentAndMaintenance(unittest.TestCase):
         self.apartment_id = ApartmentDAO.get_all_apartments()[0]["apartmentID"]
         self.tenant_id = TenantDAO.get_all_tenants()[0]["tenantID"]
 
+        # Current finance flow is:
+        # tenant + apartment -> lease -> invoice -> payment
+        LeaseDAO.create_lease(
+            tenantID=self.tenant_id,
+            apartmentID=self.apartment_id,
+            start_date="2026-04-01",
+            end_date="2027-03-31",
+        )
+
+        self.lease_id = LeaseDAO.get_all_leases()[0]["leaseID"]
+
+        self.invoice_id = InvoiceDAO.create_invoice(
+            leaseID=self.lease_id,
+            billing_period_start="2026-04-01",
+            billing_period_end="2026-04-30",
+            due_date="2026-04-30",
+            amount_due=1250.50,
+            status="UNPAID",
+        )
+
     def tearDown(self):
         db_manager.DB_NAME = self._original_db_name
         if os.path.exists(self.temp_db_path):
             os.remove(self.temp_db_path)
 
     def test_create_payment_and_update_status(self):
-        result = PaymentController.create_payment(
-            tenantID=self.tenant_id,
-            apartmentID=self.apartment_id,
-            amount_text="1250.50",
+        # Updated to match the current invoice-based schema
+        payment_id = PaymentDAO.create_payment(
+            invoiceID=self.invoice_id,
             payment_date="2026-04-20",
-            method="Card",
-            status="Pending",
-            note="April rent",
+            amount_paid=1250.50,
+            payment_method="CARD",
         )
-        self.assertEqual(result, "Success")
+        self.assertIsInstance(payment_id, int)
 
-        rows = PaymentController.get_all_payments()
+        rows = PaymentDAO.get_all_payments()
         self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["status"], "Pending")
+        self.assertEqual(rows[0]["invoiceID"], self.invoice_id)
+        self.assertEqual(float(rows[0]["amount_paid"]), 1250.50)
 
-        update_result = PaymentController.update_payment_status(rows[0]["paymentID"], "Paid")
-        self.assertEqual(update_result, "Success")
-        self.assertEqual(PaymentController.get_all_payments()[0]["status"], "Paid")
+        invoice = InvoiceDAO.get_invoice_by_id(self.invoice_id)
+        self.assertIsNotNone(invoice)
+        self.assertEqual(invoice["status"], "PAID")
 
     def test_create_payment_validation(self):
         self.assertEqual(
