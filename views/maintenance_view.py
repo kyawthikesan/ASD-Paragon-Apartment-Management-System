@@ -1,15 +1,21 @@
 # Student Name: Kyaw Thike (oliver) San
 # Student ID: 25014001
 # Module: UFCF8S-30-2 Advanced Software Development
+
+# Student Name: Shune Pyae Pyae (Evelyn) Aung
+# Student ID: 24028257
+# Module: UFCF8S-30-2 Advanced Software Development
+
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import csv
+from datetime import datetime
 import customtkinter as ctk
 
 from dao.maintenance_dao import MaintenanceDAO
+from dao.user_dao import UserDAO
 from controllers.auth_controller import AuthController
 from views.premium_shell import PremiumAppShell
-from tkcalendar import DateEntry
 
 
 class MaintenanceDashboardView(ttk.Frame):
@@ -108,20 +114,23 @@ class MaintenanceDashboardView(ttk.Frame):
         self.summary_cost_note_var = tk.StringVar(value="resolved tasks")
 
         self.section_buttons = {}
+        self._is_maintenance_role = str(self.current_role or "").strip().lower() == "maintenance"
+        shell_logout_action = self.logout_callback if self._is_maintenance_role else (self.home_callback or self.logout_callback)
 
         self._apply_local_styles()
         self.shell = PremiumAppShell(
             self,
             page_title="Maintenance",
-            on_logout=self.home_callback or self.logout_callback,
+            on_logout=shell_logout_action,
             active_nav="Maintenance",
             nav_sections=self._build_nav_sections(),
-            footer_action_label="Back to Dashboard" if self.home_callback else "Logout",
+            footer_action_label="Logout" if self._is_maintenance_role else ("Back to Dashboard" if self.home_callback else "Logout"),
             search_placeholder="Search maintenance requests...",
             location_label=AuthController.get_current_location(),
             on_bell_click=self._show_alerts,
             on_settings_click=self._show_settings,
             notification_count=self._initial_notification_count(),
+            hide_sidebar=self._is_maintenance_role,
         )
         self.page_area = self.shell.content
 
@@ -143,6 +152,21 @@ class MaintenanceDashboardView(ttk.Frame):
         self.load_data()
 
     def _build_nav_sections(self):
+        role_key = str(self.current_role or "").strip().lower()
+        if role_key == "maintenance":
+            return [
+                {
+                    "title": "Management",
+                    "items": [
+                        {
+                            "label": "Maintenance",
+                            "action": self.open_maintenance_dashboard,
+                            "icon": "maintenance",
+                        }
+                    ],
+                }
+            ]
+
         nav_sections = [
             {
                 "title": "Overview",
@@ -364,6 +388,9 @@ class MaintenanceDashboardView(ttk.Frame):
     def _build_ui(self):
         self.content.configure(style="Maintenance.TFrame")
 
+        if self._is_maintenance_role:
+            self._build_active_jobs_banner()
+
         self._build_summary_row()
 
         section_nav = ctk.CTkFrame(self.content, fg_color="transparent", corner_radius=0)
@@ -384,6 +411,73 @@ class MaintenanceDashboardView(ttk.Frame):
 
         self.show_section(self.active_section.get())
 
+    def _build_active_jobs_banner(self):
+        current_user = AuthController.current_user or {}
+        full_name = (
+            self._read_user_value(current_user, "full_name")
+            or self._read_user_value(current_user, "username")
+            or "Maintenance Staff"
+        )
+        location = AuthController.get_current_location() or "All Cities"
+        date_text = datetime.now().strftime("%a %d %b %Y")
+
+        card = ctk.CTkFrame(
+            self.content,
+            fg_color="#E8EFE6",
+            corner_radius=18,
+            border_width=1,
+            border_color="#A8CFAB",
+        )
+        card.pack(fill="x", padx=18, pady=(0, 12))
+        card.grid_columnconfigure(0, weight=0)
+        card.grid_columnconfigure(1, weight=1)
+        card.grid_columnconfigure(2, weight=0)
+
+        ctk.CTkLabel(
+            card,
+            text="🔧",
+            text_color="#4C7A52",
+            font=("Arial", 28),
+            width=56,
+            anchor="center",
+        ).grid(row=0, column=0, sticky="w", padx=(14, 8), pady=14)
+
+        text_col = ctk.CTkFrame(card, fg_color="transparent", corner_radius=0)
+        text_col.grid(row=0, column=1, sticky="w")
+
+        ctk.CTkLabel(
+            text_col,
+            text=f"{full_name} — Your Active Jobs",
+            text_color="#2F6B3F",
+            font=("Arial", 18, "bold"),
+            anchor="w",
+        ).pack(anchor="w")
+        ctk.CTkLabel(
+            text_col,
+            text=f"{location} · Maintenance Staff · {date_text}",
+            text_color="#4D8A56",
+            font=("Arial", 14, "bold"),
+            anchor="w",
+        ).pack(anchor="w", pady=(2, 0))
+
+        right_col = ctk.CTkFrame(card, fg_color="transparent", corner_radius=0)
+        right_col.grid(row=0, column=2, sticky="e", padx=(8, 20))
+
+        ctk.CTkLabel(
+            right_col,
+            textvariable=self.summary_open_var,
+            text_color="#2F6B3F",
+            font=("Georgia", 46, "bold"),
+            anchor="e",
+        ).pack(anchor="e", pady=(0, 0))
+        ctk.CTkLabel(
+            right_col,
+            text="assigned to you",
+            text_color="#4D8A56",
+            font=("Arial", 15),
+            anchor="e",
+        ).pack(anchor="e")
+
     def _build_summary_row(self):
         row = ctk.CTkFrame(self.content, fg_color="transparent", corner_radius=0)
         row.pack(fill="x", padx=18, pady=(0, 10))
@@ -391,12 +485,21 @@ class MaintenanceDashboardView(ttk.Frame):
         for i in range(4):
             row.grid_columnconfigure(i, weight=1)
 
-        cards = [
-            ("TOTAL OPEN", self.summary_open_var, self.summary_open_note_var, self.TEXT_MAIN),
-            ("HIGH PRIORITY", self.summary_high_var, self.summary_high_note_var, "#8A2A2A"),
-            ("SCHEDULED", self.summary_scheduled_var, self.summary_scheduled_note_var, "#7A5A0A"),
-            ("YTD COST", self.summary_cost_var, self.summary_cost_note_var, self.TEXT_MAIN),
-        ]
+        role_key = str(self.current_role or "").strip().lower()
+        if role_key == "maintenance":
+            cards = [
+                ("MY OPEN JOBS", self.summary_open_var, self.summary_open_note_var, self.TEXT_MAIN),
+                ("HIGH PRIORITY", self.summary_high_var, self.summary_high_note_var, "#8A2A2A"),
+                ("SCHEDULED TODAY", self.summary_scheduled_var, self.summary_scheduled_note_var, "#7A5A0A"),
+                ("MY YTD COST", self.summary_cost_var, self.summary_cost_note_var, self.TEXT_MAIN),
+            ]
+        else:
+            cards = [
+                ("TOTAL OPEN", self.summary_open_var, self.summary_open_note_var, self.TEXT_MAIN),
+                ("HIGH PRIORITY", self.summary_high_var, self.summary_high_note_var, "#8A2A2A"),
+                ("SCHEDULED", self.summary_scheduled_var, self.summary_scheduled_note_var, "#7A5A0A"),
+                ("YTD COST", self.summary_cost_var, self.summary_cost_note_var, self.TEXT_MAIN),
+            ]
 
         for idx, (title, value_var, note_var, value_color) in enumerate(cards):
             card = ctk.CTkFrame(
@@ -504,10 +607,17 @@ class MaintenanceDashboardView(ttk.Frame):
         self.summary_high_var.set(str(high_count))
         self.summary_scheduled_var.set(str(scheduled_count))
         self.summary_cost_var.set(f"£{total_cost:,.2f}")
-        self.summary_open_note_var.set("active requests")
-        self.summary_high_note_var.set("urgent action")
-        self.summary_scheduled_note_var.set("in progress")
-        self.summary_cost_note_var.set("resolved tasks")
+        role_key = str(self.current_role or "").strip().lower()
+        if role_key == "maintenance":
+            self.summary_open_note_var.set("assigned to you")
+            self.summary_high_note_var.set("need action today")
+            self.summary_scheduled_note_var.set("upcoming")
+            self.summary_cost_note_var.set("resolved by you")
+        else:
+            self.summary_open_note_var.set("active requests")
+            self.summary_high_note_var.set("urgent action")
+            self.summary_scheduled_note_var.set("in progress")
+            self.summary_cost_note_var.set("resolved tasks")
 
     def show_section(self, section_name):
         role = str(self.current_role or "").strip().lower()
@@ -1187,148 +1297,766 @@ class MaintenanceDashboardView(ttk.Frame):
     def _build_schedule_section(self, parent):
         if self.current_role not in ("maintenance",):
             return
+        root = self.winfo_toplevel()
+        root.update_idletasks()
+        compact_ui = int(root.winfo_height() or 0) < 980
+        field_height = 34 if compact_ui else 40
+        title_font_size = 15 if compact_ui else 17
+        role_font_size = 12 if compact_ui else 14
+        meta_font_size = 9 if compact_ui else 10
+        value_font_size = 12 if compact_ui else 14
+        card_pad = 12 if compact_ui else 16
+        top_pad = 10 if compact_ui else 14
 
-        schedule_frame = ttk.LabelFrame(parent, text="Schedule / Update Request", style="Maintenance.TLabelframe", padding=14)
-        schedule_frame.pack(fill="x")
+        wrap = ctk.CTkFrame(parent, fg_color="transparent", corner_radius=0)
+        wrap.pack(fill="both", expand=True)
 
-        ttk.Label(
-            schedule_frame,
-            text="Select a request first from 'Maintenance Req'.",
-            style="Maintenance.TLabel",
-        ).grid(row=0, column=0, columnspan=2, sticky="w", padx=6, pady=(0, 10))
-
-        ttk.Label(schedule_frame, text="Selected Request ID", style="Maintenance.TLabel").grid(
-            row=1, column=0, sticky="w", padx=6, pady=6
+        alert_card = ctk.CTkFrame(
+            wrap,
+            fg_color="#F5ECD5",
+            corner_radius=14,
+            border_width=1,
+            border_color="#E2CF9F",
         )
-        ttk.Label(schedule_frame, textvariable=self.selected_id_var, style="Maintenance.TLabel").grid(
-            row=1, column=1, sticky="w", padx=6, pady=6
-        )
+        alert_card.pack(fill="x", pady=(0, 12))
+        ctk.CTkLabel(
+            alert_card,
+            text="No request selected. Go to All Requests, click a row, then return here."
+            if not self.selected_request_id
+            else f"Editing {self.selected_id_var.get()}",
+            text_color="#7A5A0A",
+            font=("Arial", 12 if compact_ui else 13, "bold"),
+            anchor="w",
+        ).pack(fill="x", padx=12, pady=10 if compact_ui else 12)
 
-        ttk.Label(schedule_frame, text="Assigned Staff", style="Maintenance.TLabel").grid(
-            row=2, column=0, sticky="w", padx=6, pady=6
+        body = ctk.CTkFrame(wrap, fg_color="transparent", corner_radius=0)
+        body.pack(fill="both", expand=True)
+        body.grid_columnconfigure(0, weight=11)
+        body.grid_columnconfigure(1, weight=10)
+        body.grid_rowconfigure(0, weight=0)
+        body.grid_rowconfigure(1, weight=0)
+
+        left_card = ctk.CTkFrame(
+            body,
+            fg_color=self.CARD_BG,
+            corner_radius=16,
+            border_width=1,
+            border_color=self.BORDER,
         )
-        ttk.Entry(
-            schedule_frame,
+        left_card.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        left_card.grid_columnconfigure(0, weight=1)
+        left_card.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(
+            left_card,
+            text="Schedule / Update Request",
+            text_color=self.TEXT_MAIN,
+            font=("Arial", title_font_size, "bold"),
+            anchor="w",
+        ).grid(row=0, column=0, sticky="w", padx=card_pad, pady=(top_pad, 6 if compact_ui else 8))
+        ctk.CTkLabel(
+            left_card,
+            text="Maintenance Staff",
+            text_color="#4D8A56",
+            font=("Arial", role_font_size),
+            anchor="e",
+        ).grid(row=0, column=1, sticky="e", padx=card_pad, pady=(top_pad, 6 if compact_ui else 8))
+
+        divider = ctk.CTkFrame(left_card, fg_color="#ECE1CD", corner_radius=0, height=1)
+        divider.grid(row=1, column=0, columnspan=2, sticky="ew")
+
+        form = ctk.CTkFrame(left_card, fg_color="transparent", corner_radius=0)
+        form.grid(row=2, column=0, columnspan=2, sticky="nsew", padx=card_pad, pady=(10 if compact_ui else 12, 10 if compact_ui else 14))
+        form.grid_columnconfigure(0, weight=1)
+        form.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(
+            form,
+            text="SELECTED REQUEST ID",
+            text_color="#9A8A70",
+            font=("Arial", meta_font_size, "bold"),
+            anchor="w",
+        ).grid(row=0, column=0, sticky="w", pady=(0, 4))
+        ctk.CTkLabel(
+            form,
+            text=self.selected_id_var.get(),
+            text_color=self.TEXT_MAIN,
+            font=("Arial", value_font_size, "bold"),
+            anchor="w",
+        ).grid(row=1, column=0, sticky="w", pady=(0, 8 if compact_ui else 10))
+
+        ctk.CTkLabel(
+            form,
+            text="ASSIGNED STAFF MEMBER",
+            text_color="#9A8A70",
+            font=("Arial", meta_font_size, "bold"),
+            anchor="w",
+        ).grid(row=2, column=0, columnspan=2, sticky="w", pady=(0, 4))
+        ctk.CTkEntry(
+            form,
             textvariable=self.assigned_staff_var,
-            width=24,
-            style="Maintenance.TEntry",
-        ).grid(row=2, column=1, sticky="w", padx=6, pady=6)
+            placeholder_text="Your name or colleague",
+            fg_color="#FFFFFF",
+            border_color="#DCCEB8",
+            border_width=1,
+            text_color=self.TEXT_MAIN,
+            corner_radius=10,
+            height=field_height,
+            font=("Arial", 13),
+        ).grid(row=3, column=0, columnspan=2, sticky="ew", pady=(0, 8 if compact_ui else 10))
 
-        ttk.Label(schedule_frame, text="Scheduled Date", style="Maintenance.TLabel").grid(
-            row=3, column=0, sticky="w", padx=6, pady=6
-        )
-        self.date_picker = DateEntry(
-            schedule_frame,
+        ctk.CTkLabel(
+            form,
+            text="SCHEDULED DATE",
+            text_color="#9A8A70",
+            font=("Arial", meta_font_size, "bold"),
+            anchor="w",
+        ).grid(row=4, column=0, sticky="w", pady=(0, 4))
+        ctk.CTkLabel(
+            form,
+            text="SCHEDULED TIME",
+            text_color="#9A8A70",
+            font=("Arial", meta_font_size, "bold"),
+            anchor="w",
+        ).grid(row=4, column=1, sticky="w", padx=(10, 0), pady=(0, 4))
+
+        date_row = ctk.CTkFrame(form, fg_color="transparent", corner_radius=0)
+        date_row.grid(row=5, column=0, sticky="ew", pady=(0, 10))
+        date_row.grid_columnconfigure(0, weight=1)
+
+        self._date_validate_cmd = (self.register(self._validate_iso_date_input), "%P")
+        ctk.CTkEntry(
+            date_row,
             textvariable=self.scheduled_date_var,
-            width=21,
-            date_pattern="yyyy-mm-dd",
-        )
-        self.date_picker.grid(row=3, column=1, sticky="w", padx=6, pady=6)
-
-        ttk.Label(schedule_frame, text="Scheduled Time", style="Maintenance.TLabel").grid(
-            row=4, column=0, sticky="w", padx=6, pady=6
-        )
+            placeholder_text="YYYY-MM-DD",
+            fg_color="#FFFFFF",
+            border_color="#DCCEB8",
+            border_width=1,
+            text_color=self.TEXT_MAIN,
+            corner_radius=10,
+            height=field_height,
+            font=("Arial", 13),
+            validate="key",
+            validatecommand=self._date_validate_cmd,
+        ).grid(row=0, column=0, sticky="ew")
 
         time_values = [f"{hour:02d}:{minute:02d}" for hour in range(24) for minute in (0, 15, 30, 45)]
-
-        self.time_combo = ttk.Combobox(
-            schedule_frame,
-            textvariable=self.scheduled_time_var,
-            state="readonly",
+        self.time_combo = ctk.CTkComboBox(
+            form,
+            variable=self.scheduled_time_var,
             values=time_values,
-            width=21,
-            style="Maintenance.TCombobox",
+            fg_color="#FFFFFF",
+            border_color="#DCCEB8",
+            border_width=1,
+            button_color="#E4D8C3",
+            button_hover_color="#D8CAB0",
+            text_color=self.TEXT_MAIN,
+            dropdown_fg_color="#FFFFFF",
+            dropdown_text_color=self.TEXT_MAIN,
+            dropdown_hover_color="#F3ECDD",
+            corner_radius=10,
+            height=field_height,
+            font=("Arial", 13),
+            state="readonly",
         )
-        self.time_combo.grid(row=4, column=1, sticky="w", padx=6, pady=6)
+        self.time_combo.grid(row=5, column=1, sticky="ew", padx=(10, 0), pady=(0, 8 if compact_ui else 10))
 
         if not self.scheduled_time_var.get().strip():
             self.scheduled_time_var.set("09:00")
 
-        ttk.Label(schedule_frame, text="Priority", style="Maintenance.TLabel").grid(
-            row=5, column=0, sticky="w", padx=6, pady=6
-        )
+        ctk.CTkLabel(
+            form,
+            text="UPDATE PRIORITY",
+            text_color="#9A8A70",
+            font=("Arial", meta_font_size, "bold"),
+            anchor="w",
+        ).grid(row=6, column=0, columnspan=2, sticky="w", pady=(0, 4))
 
-        self.priority_combo = ttk.Combobox(
-            schedule_frame,
-            textvariable=self.schedule_priority_var,
-            state="readonly",
+        self.priority_combo = ctk.CTkComboBox(
+            form,
+            variable=self.schedule_priority_var,
             values=["Low", "Medium", "High", "Urgent"],
-            width=21,
-            style="Maintenance.TCombobox",
+            state="readonly",
+            fg_color="#FFFFFF",
+            border_color="#DCCEB8",
+            border_width=1,
+            button_color="#E4D8C3",
+            button_hover_color="#D8CAB0",
+            text_color=self.TEXT_MAIN,
+            dropdown_fg_color="#FFFFFF",
+            dropdown_text_color=self.TEXT_MAIN,
+            dropdown_hover_color="#F3ECDD",
+            corner_radius=10,
+            height=field_height,
+            font=("Arial", 13),
         )
-        self.priority_combo.grid(row=5, column=1, sticky="w", padx=6, pady=6)
-        self.priority_combo.set(self.schedule_priority_var.get())
+        self.priority_combo.grid(row=7, column=0, columnspan=2, sticky="ew", pady=(0, 10 if compact_ui else 14))
+        self.priority_combo.set(self.schedule_priority_var.get() or "Medium")
 
-        ttk.Button(
-            schedule_frame,
-            text="Schedule Request",
+        actions = ctk.CTkFrame(form, fg_color="transparent", corner_radius=0)
+        actions.grid(row=8, column=0, columnspan=2, sticky="w")
+
+        ctk.CTkButton(
+            actions,
+            text="Save Schedule",
             command=self.schedule_selected_request,
-            style="Maintenance.Primary.TButton",
-        ).grid(row=6, column=1, sticky="w", padx=6, pady=(10, 0))
+            fg_color="#F8F5F0",
+            hover_color="#EEE4D2",
+            text_color="#1E1B15",
+            border_width=1,
+            border_color="#BFB5A5",
+            corner_radius=12,
+            height=36 if compact_ui else 40,
+            width=146 if compact_ui else 162,
+            font=("Arial", 12 if compact_ui else 13, "bold"),
+        ).pack(side="left", padx=(0, 8 if compact_ui else 10))
+
+        ctk.CTkButton(
+            actions,
+            text="Back",
+            command=lambda: self.show_section("requests"),
+            fg_color="#F8F5F0",
+            hover_color="#EEE4D2",
+            text_color="#1E1B15",
+            border_width=1,
+            border_color="#BFB5A5",
+            corner_radius=12,
+            height=36 if compact_ui else 40,
+            width=100 if compact_ui else 110,
+            font=("Arial", 12 if compact_ui else 13, "bold"),
+        ).pack(side="left")
+
+        right_col = ctk.CTkFrame(body, fg_color="transparent", corner_radius=0)
+        right_col.grid(row=0, column=1, sticky="nsew")
+
+        timeline_card = ctk.CTkFrame(
+            right_col,
+            fg_color=self.CARD_BG,
+            corner_radius=16,
+            border_width=1,
+            border_color=self.BORDER,
+        )
+        timeline_card.pack(fill="x", pady=(0, 10))
+        ctk.CTkLabel(
+            timeline_card,
+            text="Request Timeline",
+            text_color=self.TEXT_MAIN,
+            font=("Arial", 14 if compact_ui else 16, "bold"),
+            anchor="w",
+        ).pack(fill="x", padx=card_pad, pady=(top_pad, 6 if compact_ui else 8))
+        ctk.CTkFrame(timeline_card, fg_color="#ECE1CD", corner_radius=0, height=1).pack(fill="x")
+        ctk.CTkLabel(
+            timeline_card,
+            text=self._schedule_timeline_text(),
+            text_color="#8E7E67",
+            font=("Arial", 11 if compact_ui else 12),
+            anchor="w",
+            justify="left",
+        ).pack(fill="x", padx=card_pad, pady=10 if compact_ui else 14)
+
+        staff_card = ctk.CTkFrame(
+            right_col,
+            fg_color=self.CARD_BG,
+            corner_radius=16,
+            border_width=1,
+            border_color=self.BORDER,
+        )
+        staff_card.pack(fill="both", expand=True)
+        ctk.CTkLabel(
+            staff_card,
+            text="Staff Availability",
+            text_color=self.TEXT_MAIN,
+            font=("Arial", 14 if compact_ui else 16, "bold"),
+            anchor="w",
+        ).pack(fill="x", padx=card_pad, pady=(top_pad, 6 if compact_ui else 8))
+        ctk.CTkFrame(staff_card, fg_color="#ECE1CD", corner_radius=0, height=1).pack(fill="x")
+
+        staff_list = ctk.CTkFrame(staff_card, fg_color="transparent", corner_radius=0)
+        staff_list.pack(fill="x", expand=False, padx=card_pad, pady=8 if compact_ui else 12)
+        self._populate_staff_availability(staff_list)
+
+        self._layout_schedule_columns(body, left_card, right_col)
+        body.bind(
+            "<Configure>",
+            lambda _e, container=body, left=left_card, right=right_col: self._layout_schedule_columns(
+                container, left, right
+            ),
+            add="+",
+        )
+
+    @staticmethod
+    def _validate_iso_date_input(proposed):
+        if proposed == "":
+            return True
+        if len(proposed) > 10:
+            return False
+        for index, char in enumerate(proposed):
+            if index in (4, 7):
+                if char != "-":
+                    return False
+            elif not char.isdigit():
+                return False
+        return True
+
+    def _layout_schedule_columns(self, body, left_card, right_col):
+        if not (body.winfo_exists() and left_card.winfo_exists() and right_col.winfo_exists()):
+            return
+
+        width = int(body.winfo_width() or 0)
+        root = self.winfo_toplevel()
+        root_height = int(root.winfo_height() or 0)
+        compact = width < 1750 or (0 < root_height < 980)
+
+        # Keep the original side-by-side layout for this screen.
+        # Compact mode only reduces spacing/relative width balance.
+        left_pad = (0, 8) if compact else (0, 10)
+        left_weight = 12 if compact else 11
+        right_weight = 9 if compact else 10
+
+        left_card.grid_configure(row=0, column=0, sticky="nsew", padx=left_pad, pady=0, columnspan=1)
+        right_col.grid_configure(row=0, column=1, sticky="nsew", padx=0, pady=0, columnspan=1)
+        body.grid_columnconfigure(0, weight=left_weight)
+        body.grid_columnconfigure(1, weight=right_weight)
+        body.grid_rowconfigure(0, weight=1)
+        body.grid_rowconfigure(1, weight=0)
+
+    def _schedule_timeline_text(self):
+        if not self.selected_request_id:
+            return "Select a request from All Requests to see timeline details."
+
+        row = self.request_rows_by_id.get(str(self.selected_request_id), {})
+        if not row:
+            return "No timeline data available for the selected request."
+
+        events = []
+        created = self._format_db_datetime(row.get("created_at"))
+        updated = self._format_db_datetime(row.get("updated_at"))
+        scheduled_date = str(row.get("scheduled_date", "") or "").strip()
+        scheduled_time = str(row.get("scheduled_time", "") or "").strip()
+        status = self._format_status_display(row.get("status", ""))
+
+        if created:
+            events.append(f"Created: {created}")
+        if scheduled_date or scheduled_time:
+            schedule_bits = " ".join(part for part in [scheduled_date, scheduled_time] if part).strip()
+            events.append(f"Scheduled: {schedule_bits}")
+        events.append(f"Current status: {status}")
+        if updated:
+            events.append(f"Last updated: {updated}")
+        return "\n".join(events)
+
+    def _format_db_datetime(self, value):
+        text = str(value or "").strip()
+        if not text:
+            return ""
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(text, fmt).strftime("%d %b %Y %H:%M" if fmt.endswith("%S") else "%d %b %Y")
+            except ValueError:
+                continue
+        return text
+
+    def _populate_staff_availability(self, parent):
+        city = AuthController.get_current_location()
+        current_city = None if str(city or "").strip().lower() == "all cities" else city
+        try:
+            staff_rows = [dict(row) for row in UserDAO.get_active_maintenance_staff(current_city)]
+        except Exception:
+            staff_rows = []
+
+        if not staff_rows:
+            ctk.CTkLabel(
+                parent,
+                text="No active maintenance staff found for this location.",
+                text_color="#8E7E67",
+                font=("Arial", 12),
+                anchor="w",
+            ).pack(fill="x")
+            return
+
+        job_counts = {}
+        for row in self.all_request_rows:
+            status = str(row.get("status", "")).strip().lower()
+            if status in {"resolved", "closed"}:
+                continue
+            staff_name = str(row.get("assigned_staff", "")).strip().lower()
+            if not staff_name:
+                continue
+            job_counts[staff_name] = job_counts.get(staff_name, 0) + 1
+
+        current_user = AuthController.current_user or {}
+        my_name = str(self._read_user_value(current_user, "full_name", "")).strip().lower()
+
+        for staff in staff_rows[:5]:
+            full_name = str(staff.get("full_name") or staff.get("username") or "Staff").strip()
+            short_name = "".join(part[0] for part in full_name.split()[:2]).upper() or "MS"
+            active_jobs = job_counts.get(full_name.lower(), 0)
+            is_me = bool(my_name) and full_name.lower() == my_name
+
+            if active_jobs == 0:
+                chip_text = "Available"
+                chip_bg = "#E2EFE2"
+                chip_fg = "#2F6B3F"
+            else:
+                chip_text = f"{active_jobs} job active"
+                chip_bg = "#F2E6CD"
+                chip_fg = "#7A5A0A"
+
+            row_frame = ctk.CTkFrame(parent, fg_color="transparent", corner_radius=0)
+            row_frame.pack(fill="x", pady=2)
+
+            avatar = ctk.CTkLabel(
+                row_frame,
+                text=short_name,
+                width=38,
+                height=38,
+                corner_radius=19,
+                fg_color="#E9EFE9" if is_me else "#F3F0E8",
+                text_color="#2F6B3F" if is_me else "#7A5A0A",
+                font=("Arial", 14, "bold"),
+            )
+            avatar.pack(side="left")
+
+            name_text = f"{full_name} (you)" if is_me else full_name
+            ctk.CTkLabel(
+                row_frame,
+                text=name_text,
+                text_color=self.TEXT_MAIN,
+                font=("Arial", 12, "bold" if is_me else "normal"),
+                anchor="w",
+            ).pack(side="left", padx=(8, 10), fill="x", expand=True)
+
+            ctk.CTkLabel(
+                row_frame,
+                text=chip_text,
+                fg_color=chip_bg,
+                text_color=chip_fg,
+                corner_radius=12,
+                width=96,
+                height=24,
+                font=("Arial", 11, "bold"),
+            ).pack(side="right")
 
     def _build_resolve_section(self, parent):
         if self.current_role not in ("maintenance",):
             return
+        root = self.winfo_toplevel()
+        root.update_idletasks()
+        compact_ui = int(root.winfo_height() or 0) < 980
+        header_font = 15 if compact_ui else 17
+        role_font = 12 if compact_ui else 14
+        label_font = 9 if compact_ui else 10
+        input_height = 34 if compact_ui else 40
+        text_height = 110 if compact_ui else 150
+        card_pad = 12 if compact_ui else 16
 
-        resolve_frame = ttk.LabelFrame(parent, text="Resolve Request", style="Maintenance.TLabelframe", padding=14)
-        resolve_frame.pack(fill="x")
+        warning = ctk.CTkFrame(
+            parent,
+            fg_color="#F5ECD5",
+            corner_radius=14,
+            border_width=1,
+            border_color="#E2CF9F",
+        )
+        warning.pack(fill="x", pady=(0, 12))
+        warning_text = (
+            "No request selected. Go to All Requests, click a row, then return here."
+            if not self.selected_request_id
+            else f"Ready to resolve {self.selected_id_var.get()}."
+        )
+        ctk.CTkLabel(
+            warning,
+            text=f"⚠ {warning_text}",
+            text_color="#7A5A0A",
+            font=("Arial", 12 if compact_ui else 13, "bold"),
+            anchor="w",
+        ).pack(fill="x", padx=12, pady=10 if compact_ui else 12)
 
-        ttk.Label(
+        layout = ctk.CTkFrame(parent, fg_color="transparent", corner_radius=0)
+        layout.pack(fill="both", expand=True)
+        layout.grid_columnconfigure(0, weight=11)
+        layout.grid_columnconfigure(1, weight=10)
+
+        resolve_frame = ctk.CTkFrame(
+            layout,
+            fg_color=self.CARD_BG,
+            corner_radius=16,
+            border_width=1,
+            border_color=self.BORDER,
+        )
+        resolve_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        resolve_frame.grid_columnconfigure(0, weight=1)
+        resolve_frame.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(
             resolve_frame,
-            text="Select a request first from 'Maintenance Req'.",
-            style="Maintenance.TLabel",
-        ).grid(row=0, column=0, columnspan=2, sticky="w", padx=6, pady=(0, 10))
-
-        ttk.Label(resolve_frame, text="Selected Request ID", style="Maintenance.TLabel").grid(
-            row=1, column=0, sticky="w", padx=6, pady=6
-        )
-        ttk.Label(resolve_frame, textvariable=self.selected_id_var, style="Maintenance.TLabel").grid(
-            row=1, column=1, sticky="w", padx=6, pady=6
-        )
-
-        ttk.Label(resolve_frame, text="Resolution Note", style="Maintenance.TLabel").grid(
-            row=2, column=0, sticky="nw", padx=6, pady=6
-        )
-        self.resolution_text = tk.Text(
+            text="Resolve Request",
+            text_color=self.TEXT_MAIN,
+            font=("Arial", header_font, "bold"),
+            anchor="w",
+        ).grid(row=0, column=0, sticky="w", padx=card_pad, pady=(10 if compact_ui else 14, 6 if compact_ui else 8))
+        ctk.CTkLabel(
             resolve_frame,
-            width=44,
-            height=6,
-            relief="solid",
-            bd=1,
-            bg="#FFFFFF",
-            fg=self.TEXT_MAIN,
-            highlightthickness=1,
-            highlightbackground="#DCCEB8",
-            insertbackground=self.GOLD_DEEP,
-        )
-        self.resolution_text.grid(row=2, column=1, sticky="w", padx=6, pady=6)
+            text="Maintenance Staff only",
+            text_color="#4D8A56",
+            font=("Arial", role_font),
+            anchor="e",
+        ).grid(row=0, column=1, sticky="e", padx=card_pad, pady=(10 if compact_ui else 14, 6 if compact_ui else 8))
 
-        ttk.Label(resolve_frame, text="Hours Spent", style="Maintenance.TLabel").grid(
-            row=3, column=0, sticky="w", padx=6, pady=6
+        ctk.CTkFrame(resolve_frame, fg_color="#ECE1CD", corner_radius=0, height=1).grid(
+            row=1, column=0, columnspan=2, sticky="ew"
         )
-        ttk.Entry(
-            resolve_frame,
+
+        form = ctk.CTkFrame(resolve_frame, fg_color="transparent", corner_radius=0)
+        form.grid(row=2, column=0, columnspan=2, sticky="ew", padx=card_pad, pady=(10 if compact_ui else 12, 10 if compact_ui else 14))
+        form.grid_columnconfigure(0, weight=1)
+        form.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(
+            form,
+            text="RESOLUTION NOTE",
+            text_color="#9A8A70",
+            font=("Arial", label_font, "bold"),
+            anchor="w",
+        ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 4))
+
+        self.resolution_text = ctk.CTkTextbox(
+            form,
+            fg_color="#FFFFFF",
+            border_color="#DCCEB8",
+            border_width=1,
+            text_color=self.TEXT_MAIN,
+            corner_radius=10,
+            height=text_height,
+            font=("Arial", 12 if compact_ui else 13),
+            wrap="word",
+        )
+        self.resolution_text.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0, 8 if compact_ui else 10))
+
+        self._resolve_placeholder = "What was done? Parts used? Any follow-up needed?"
+        self._set_textbox_placeholder(self.resolution_text, self._resolve_placeholder)
+        self.resolution_text.bind(
+            "<FocusIn>",
+            lambda e: self._clear_textbox_placeholder(self.resolution_text, self._resolve_placeholder),
+        )
+        self.resolution_text.bind(
+            "<FocusOut>",
+            lambda e: self._restore_textbox_placeholder(self.resolution_text, self._resolve_placeholder),
+        )
+
+        ctk.CTkLabel(
+            form,
+            text="HOURS SPENT",
+            text_color="#9A8A70",
+            font=("Arial", label_font, "bold"),
+            anchor="w",
+        ).grid(row=2, column=0, sticky="w", pady=(0, 4))
+        ctk.CTkLabel(
+            form,
+            text="ACTUAL COST (£)",
+            text_color="#9A8A70",
+            font=("Arial", label_font, "bold"),
+            anchor="w",
+        ).grid(row=2, column=1, sticky="w", padx=(10, 0), pady=(0, 4))
+
+        ctk.CTkEntry(
+            form,
             textvariable=self.hours_spent_var,
-            width=18,
-            style="Maintenance.TEntry",
-        ).grid(row=3, column=1, sticky="w", padx=6, pady=6)
+            fg_color="#FFFFFF",
+            border_color="#DCCEB8",
+            border_width=1,
+            text_color=self.TEXT_MAIN,
+            corner_radius=10,
+            height=input_height,
+            font=("Arial", 12 if compact_ui else 13),
+        ).grid(row=3, column=0, sticky="ew", pady=(0, 8 if compact_ui else 12))
 
-        ttk.Label(resolve_frame, text="Cost", style="Maintenance.TLabel").grid(
-            row=4, column=0, sticky="w", padx=6, pady=6
-        )
-        ttk.Entry(
-            resolve_frame,
+        ctk.CTkEntry(
+            form,
             textvariable=self.cost_var,
-            width=18,
-            style="Maintenance.TEntry",
-        ).grid(row=4, column=1, sticky="w", padx=6, pady=6)
+            fg_color="#FFFFFF",
+            border_color="#DCCEB8",
+            border_width=1,
+            text_color=self.TEXT_MAIN,
+            corner_radius=10,
+            height=input_height,
+            font=("Arial", 12 if compact_ui else 13),
+        ).grid(row=3, column=1, sticky="ew", padx=(10, 0), pady=(0, 8 if compact_ui else 12))
 
-        ttk.Button(
-            resolve_frame,
-            text="Mark as Resolved",
+        actions = ctk.CTkFrame(form, fg_color="transparent", corner_radius=0)
+        actions.grid(row=4, column=0, columnspan=2, sticky="w")
+
+        ctk.CTkButton(
+            actions,
+            text="Mark as\nResolved",
             command=self.resolve_selected_request,
-            style="Maintenance.Primary.TButton",
-        ).grid(row=5, column=1, sticky="w", padx=6, pady=(10, 0))
+            fg_color="#3E7B45",
+            hover_color="#2F6436",
+            text_color="#FFFFFF",
+            border_width=0,
+            corner_radius=12,
+            height=44 if compact_ui else 56,
+            width=150 if compact_ui else 170,
+            font=("Arial", 12 if compact_ui else 13, "bold"),
+        ).pack(side="left", padx=(0, 8 if compact_ui else 10))
+
+        ctk.CTkButton(
+            actions,
+            text="←\nBack",
+            command=lambda: self.show_section("requests"),
+            fg_color="#F8F5F0",
+            hover_color="#EEE4D2",
+            text_color="#1E1B15",
+            border_width=1,
+            border_color="#BFB5A5",
+            corner_radius=12,
+            height=44 if compact_ui else 56,
+            width=88 if compact_ui else 96,
+            font=("Arial", 12 if compact_ui else 13, "bold"),
+        ).pack(side="left")
+
+        summary = ctk.CTkFrame(
+            layout,
+            fg_color=self.CARD_BG,
+            corner_radius=16,
+            border_width=1,
+            border_color=self.BORDER,
+        )
+        summary.grid(row=0, column=1, sticky="nsew")
+        self._build_resolve_summary(summary, compact_ui=compact_ui)
+
+    def _build_resolve_summary(self, parent, compact_ui=False):
+        current_user = AuthController.current_user or {}
+        my_name = (
+            self._read_user_value(current_user, "full_name")
+            or self._read_user_value(current_user, "username")
+            or "Maintenance Staff"
+        )
+        name_key = str(my_name).strip().lower()
+
+        resolved_rows = [
+            row for row in self.all_request_rows
+            if str(row.get("status", "")).strip().lower() == "resolved"
+        ]
+        mine = [
+            row for row in resolved_rows
+            if str(row.get("assigned_staff", "")).strip().lower() == name_key
+        ]
+
+        jobs_resolved = len(mine)
+        total_cost = sum(self._safe_float(row.get("cost", 0)) for row in mine)
+        total_hours = sum(self._safe_float(row.get("hours_spent", 0)) for row in mine)
+        avg_cost = (total_cost / jobs_resolved) if jobs_resolved else 0.0
+
+        ctk.CTkLabel(
+            parent,
+            text="Your Cost Summary",
+            text_color=self.TEXT_MAIN,
+            font=("Arial", 15 if compact_ui else 17, "bold"),
+            anchor="w",
+        ).pack(fill="x", padx=12 if compact_ui else 16, pady=(10 if compact_ui else 14, 6 if compact_ui else 8))
+        ctk.CTkButton(
+            parent,
+            text="Full report",
+            command=self.show_report,
+            fg_color="transparent",
+            hover_color="#F5EFE4",
+            text_color="#2F6B3F",
+            corner_radius=10,
+            height=26 if compact_ui else 28,
+            width=84 if compact_ui else 90,
+            font=("Arial", 11 if compact_ui else 12, "bold"),
+        ).place(relx=1.0, x=-(12 if compact_ui else 14), y=10 if compact_ui else 14, anchor="ne")
+        ctk.CTkFrame(parent, fg_color="#ECE1CD", corner_radius=0, height=1).pack(fill="x")
+
+        score = ctk.CTkFrame(
+            parent,
+            fg_color="#EEF3EA",
+            corner_radius=14,
+            border_width=1,
+            border_color="#9FCC9F",
+        )
+        score.pack(fill="x", padx=12 if compact_ui else 16, pady=(8 if compact_ui else 12, 8 if compact_ui else 10))
+
+        ctk.CTkLabel(
+            score,
+            text=f"{my_name} — YTD Performance",
+            text_color=self.TEXT_MAIN,
+            font=("Arial", 13 if compact_ui else 15, "bold"),
+            anchor="w",
+        ).pack(fill="x", padx=12 if compact_ui else 14, pady=(10 if compact_ui else 12, 6 if compact_ui else 8))
+
+        for label, value in [
+            ("Jobs Resolved", str(jobs_resolved)),
+            ("Total Cost Logged", f"£{total_cost:,.2f}"),
+            ("Total Labour Hours", f"{total_hours:.1f} hrs"),
+            ("Avg Cost / Job", f"£{avg_cost:,.2f}"),
+        ]:
+            row = ctk.CTkFrame(score, fg_color="transparent", corner_radius=0, height=24)
+            row.pack(fill="x", padx=12 if compact_ui else 14, pady=1)
+            row.pack_propagate(False)
+            ctk.CTkLabel(row, text=label, text_color="#5E5137", font=("Arial", 11 if compact_ui else 12, "bold"), anchor="w").pack(
+                side="left", fill="x", expand=True
+            )
+            ctk.CTkLabel(row, text=value, text_color=self.TEXT_MAIN, font=("Arial", 11 if compact_ui else 12, "bold"), anchor="e").pack(
+                side="right"
+            )
+        ctk.CTkFrame(score, fg_color="transparent", height=6 if compact_ui else 10).pack()
+
+        ctk.CTkLabel(
+            parent,
+            text="YOUR JOBS BY CATEGORY",
+            text_color="#9A8A70",
+            font=("Arial", 9 if compact_ui else 10, "bold"),
+            anchor="w",
+        ).pack(fill="x", padx=12 if compact_ui else 16, pady=(0 if compact_ui else 2, 3 if compact_ui else 4))
+
+        categories = self._resolve_category_totals(mine)
+        max_value = max([value for _, value in categories] + [1.0])
+        for idx, (label, amount) in enumerate(categories):
+            is_last = idx == len(categories) - 1
+            row = ctk.CTkFrame(parent, fg_color="transparent", corner_radius=0)
+            row.pack(
+                fill="x",
+                padx=12 if compact_ui else 16,
+                pady=(2 if compact_ui else 3, 8 if is_last else (2 if compact_ui else 3)),
+            )
+            top = ctk.CTkFrame(row, fg_color="transparent", corner_radius=0)
+            top.pack(fill="x")
+            ctk.CTkLabel(top, text=label, text_color=self.TEXT_MAIN, font=("Arial", 11 if compact_ui else 12, "bold"), anchor="w").pack(
+                side="left", fill="x", expand=True
+            )
+            ctk.CTkLabel(top, text=f"£{amount:,.0f}", text_color=self.TEXT_MAIN, font=("Arial", 11 if compact_ui else 12, "bold"), anchor="e").pack(
+                side="right"
+            )
+            rail = ctk.CTkFrame(row, fg_color="#E6DDCC", corner_radius=4, height=7 if compact_ui else 8)
+            rail.pack(fill="x", pady=(2, 0))
+            fill_width = max(0.05, amount / max_value)
+            ctk.CTkFrame(
+                rail,
+                fg_color="#3E7B45",
+                corner_radius=4,
+                height=7 if compact_ui else 8,
+                width=max(8, int((300 if compact_ui else 370) * fill_width)),
+            ).pack(
+                side="left"
+            )
+
+    def _resolve_category_totals(self, rows):
+        categories = {
+            "Plumbing": 0.0,
+            "Heating / HVAC": 0.0,
+            "Windows / Locks": 0.0,
+        }
+        for row in rows:
+            title = str(row.get("title", "")).strip().lower()
+            cost = self._safe_float(row.get("cost", 0))
+            if any(token in title for token in ("pipe", "plumb", "leak", "drain", "toilet", "tap", "water")):
+                categories["Plumbing"] += cost
+            elif any(token in title for token in ("heater", "heating", "boiler", "hvac", "ac", "air", "vent")):
+                categories["Heating / HVAC"] += cost
+            else:
+                categories["Windows / Locks"] += cost
+        return list(categories.items())
 
     def create_request(self):
         if self.current_role not in ("front_desk", "admin"):
@@ -1573,6 +2301,15 @@ class MaintenanceDashboardView(ttk.Frame):
             )
             return
 
+        try:
+            datetime.strptime(scheduled_date, "%Y-%m-%d")
+        except ValueError:
+            messagebox.showwarning(
+                "Invalid Date",
+                "Scheduled date must be in YYYY-MM-DD format (for example 2026-04-23).",
+            )
+            return
+
         self.dao.schedule_request(
             self.selected_request_id,
             assigned_staff,
@@ -1594,6 +2331,8 @@ class MaintenanceDashboardView(ttk.Frame):
             return
 
         resolution_note = self.resolution_text.get("1.0", tk.END).strip()
+        if resolution_note == getattr(self, "_resolve_placeholder", ""):
+            resolution_note = ""
 
         try:
             hours_spent = float(self.hours_spent_var.get().strip() or 0)
@@ -1718,7 +2457,13 @@ class MaintenanceDashboardView(ttk.Frame):
             for row in rows:
                 writer.writerow({field: row.get(field, "") for field in fields})
 
-        messagebox.showinfo("Export Complete", f"CSV exported to:\n{file_path}")
+        self.shell.show_premium_info_modal(
+            title="Export Complete",
+            rows=[("CSV exported to", file_path)],
+            icon_image_name="success",
+            icon_image_size=(34, 34),
+            button_text="OK",
+        )
 
     def auto_fill_apartment_from_tenant(self, _event=None):
         selected_label = self.create_tenant_var.get().strip()

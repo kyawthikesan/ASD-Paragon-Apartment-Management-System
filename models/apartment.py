@@ -1,3 +1,7 @@
+# Student Name: Shune Pyae Pyae (Evelyn) Aung
+# Student ID: 24028257
+# Module: UFCF8S-30-2 Advanced Software Development
+
 class Apartment:
     def __init__(self, location_id, apt_type, rent, rooms, status="available"):
         self.location_id = location_id

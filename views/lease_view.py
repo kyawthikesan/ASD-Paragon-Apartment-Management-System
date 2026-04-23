@@ -2,6 +2,10 @@
 # Student ID: 24043841
 # Module: UFCF8S-30-2 Advanced Software Development
 
+# Student Name: Shune Pyae Pyae (Evelyn) Aung
+# Student ID: 24028257
+# Module: UFCF8S-30-2 Advanced Software Development
+
 import tkinter as tk
 from tkinter import ttk, filedialog
 from datetime import date, datetime, timedelta

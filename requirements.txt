@@ -1,17 +1,17 @@
-babel==2.18.0
-contourpy==1.3.2
+# Core UI
 customtkinter==5.2.2
-cycler==0.12.1
-darkdetect==0.8.0
-defusedxml==0.7.1
-fonttools==4.62.1
-fpdf2==2.8.7
-kiwisolver==1.5.0
+Pillow==12.2.0
+tkcalendar==1.6.1
+
+# Charts and analytics dashboard
 matplotlib==3.10.8
 numpy==2.2.6
-packaging==26.1
-pillow==12.2.0
-pyparsing==3.3.2
-python-dateutil==2.9.0.post0
-six==1.17.0
-tkcalendar==1.6.1
+
+# PDF export
+fpdf2==2.8.7
+
+# Explicit dependency for tkcalendar locale formatting
+Babel==2.18.0
+
+# Test runner
+pytest==8.3.5

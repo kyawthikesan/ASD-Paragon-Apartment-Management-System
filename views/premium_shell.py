@@ -56,6 +56,7 @@ class PremiumAppShell(ctk.CTkFrame):
         on_bell_click=None,
         on_settings_click=None,
         notification_count=0,
+        hide_sidebar=False,
     ):
         super().__init__(parent, fg_color=self.BODY_BG, corner_radius=0)
         self.pack(fill="both", expand=True)
@@ -75,6 +76,9 @@ class PremiumAppShell(ctk.CTkFrame):
         self._on_bell_click = on_bell_click
         self._on_settings_click = on_settings_click
         self._notification_count = notification_count
+        self._on_logout = on_logout
+        self._footer_action_label = footer_action_label
+        self._hide_sidebar = bool(hide_sidebar)
         self._search_debounce_job = None
         self._search_watch_job = None
         self._last_search_text = ""
@@ -105,26 +109,31 @@ class PremiumAppShell(ctk.CTkFrame):
         frame = ctk.CTkFrame(self, fg_color=self.BODY_BG, corner_radius=0)
         frame.pack(fill="both", expand=True)
 
-        # Sidebar column fixed, body column expandable
+        # Sidebar column fixed (unless hidden), body column expandable
         frame.grid_rowconfigure(0, weight=1)
-        frame.grid_columnconfigure(0, weight=0)
-        frame.grid_columnconfigure(1, weight=1)
+        if self._hide_sidebar:
+            frame.grid_columnconfigure(0, weight=1)
+            body_column = 0
+        else:
+            frame.grid_columnconfigure(0, weight=0)
+            frame.grid_columnconfigure(1, weight=1)
+            body_column = 1
 
-        sidebar = ctk.CTkFrame(
-            frame,
-            fg_color=self.SIDEBAR_BG,
-            corner_radius=0,
-            width=230,
-        )
-        sidebar.grid(row=0, column=0, sticky="nsew")
-        sidebar.grid_propagate(False)
+            sidebar = ctk.CTkFrame(
+                frame,
+                fg_color=self.SIDEBAR_BG,
+                corner_radius=0,
+                width=230,
+            )
+            sidebar.grid(row=0, column=0, sticky="nsew")
+            sidebar.grid_propagate(False)
+            self._build_sidebar(sidebar, on_logout, active_nav, nav_sections, footer_action_label)
 
         body = ctk.CTkFrame(frame, fg_color=self.BODY_BG, corner_radius=0)
-        body.grid(row=0, column=1, sticky="nsew")
+        body.grid(row=0, column=body_column, sticky="nsew")
         body.grid_rowconfigure(1, weight=1)
         body.grid_columnconfigure(0, weight=1)
 
-        self._build_sidebar(sidebar, on_logout, active_nav, nav_sections, footer_action_label)
         self._build_topbar(body, page_title)
 
         self.content = ctk.CTkFrame(body, fg_color=self.BODY_BG, corner_radius=0)
@@ -466,6 +475,28 @@ class PremiumAppShell(ctk.CTkFrame):
         )
         self.date_label.pack(side="left")
         self._refresh_date()
+
+        if self._hide_sidebar:
+            logout_btn = ctk.CTkButton(
+                right,
+                text=self._footer_action_label,
+                command=self._on_logout,
+                fg_color=self.SEARCH_BG,
+                hover_color="#E9DECF",
+                bg_color=self.BODY_BG,
+                text_color=self.TEXT_MID,
+                corner_radius=16,
+                height=38,
+                border_width=1,
+                border_color="#D8CAB0",
+                font=("Arial", 11, "bold"),
+            )
+            logout_btn.pack(side="left", padx=(12, 0))
+
+            logout_icon = self._load_icon("logout", size=(16, 16), tint="#7A6F5D")
+            if logout_icon:
+                logout_btn.configure(image=logout_icon, compound="left")
+                logout_btn._icon_ref = logout_icon
 
     def _icon_pill_button(self, parent, icon_key, command, fallback="•"):
         btn = ctk.CTkButton(
