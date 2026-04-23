@@ -9,13 +9,34 @@ from controllers.auth_controller import AuthController
 from tkcalendar import DateEntry
 
 class MaintenanceDashboardView(ttk.Frame):
-    def __init__(self, parent, logout_callback=None, home_callback=None):
+    def __init__(
+        self,
+        parent,
+        logout_callback=None,
+        home_callback=None,
+        open_tenant_management=None,
+        open_apartment_management=None,
+        open_lease_management=None,
+        open_finance_payments=None,
+        open_finance_reports=None,
+        open_user_management=None,
+        open_maintenance_dashboard=None,
+        **_kwargs,
+    ):
         super().__init__(parent)
         self.current_role = AuthController.get_current_role()
         self.pack(fill="both", expand=True)
 
         self.logout_callback = logout_callback
         self.home_callback = home_callback
+        # Keep compatibility with newer router kwargs from main.py
+        self.open_tenant_management = open_tenant_management
+        self.open_apartment_management = open_apartment_management
+        self.open_lease_management = open_lease_management
+        self.open_finance_payments = open_finance_payments
+        self.open_finance_reports = open_finance_reports
+        self.open_user_management = open_user_management
+        self.open_maintenance_dashboard = open_maintenance_dashboard
         self.dao = MaintenanceDAO()
         self.selected_request_id = None
         default_section = "create" if self.current_role == "front_desk" else "requests"

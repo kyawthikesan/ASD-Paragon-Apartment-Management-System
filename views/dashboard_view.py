@@ -119,15 +119,6 @@ class DashboardView(tk.Frame):
                 }
             )
             
-        if (AuthController.can_access_feature("maintenance_dashboard", self.role)
-            or str(self.role).strip().lower() == "admin"):
-            nav_sections[1]["items"].append(
-                {
-                    "label": "Maintenance",
-                    "action": open_maintenance_dashboard,
-                "icon": "maintenance",
-                }
-            )
         # Keep User Access visible for consistent sidebar layout.
         nav_sections[3]["items"].append(
             {
