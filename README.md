@@ -1,5 +1,9 @@
 # Paragon Apartment Management System (PAMS)
 
+A desktop-based apartment management system developed as a university group project using Python, CustomTkinter, and SQLite.
+
+This repository is included in my portfolio to showcase my individual contributions to the Maintenance module, Finance/Payment improvements, testing, integration support, and Git/GitHub workflow.
+
 ## Module Information
 
 **Module:** Applied System Design  
@@ -11,6 +15,12 @@
 The Paragon Apartment Management System (PAMS) is a desktop-based software application developed to support the management of apartment-related operations. The system provides an organised and user-friendly platform for managing tenants, apartments, and lease records while demonstrating the practical application of system analysis, design, and implementation principles.
 
 This project was developed as a group assignment and focuses on applying software development methodologies, object-oriented design, modular programming, graphical user interface development, and database integration.
+
+## Portfolio Note
+
+This repository is included in my GitHub portfolio to demonstrate my contribution to a university group software development project. The project was completed collaboratively by a team of four students for the Advanced Software Development module.
+
+My main contributions focused on the Maintenance module, Finance/Payment improvements, integration support, testing, debugging, and Git/GitHub coordination. Full team credits are listed below.
 
 ## Objectives
 
@@ -42,8 +52,10 @@ The system currently includes the following features:
 ## Technologies Used
 
 - **Programming Language:** Python
-- **GUI Framework:** Tkinter
+- **GUI Framework:** Tkinter / CustomTkinter
 - **Database:** SQLite
+- **Testing:** Python unittest
+- **Version Control:** Git and GitHub
 - **Development Approach:** Modular and object-oriented design
 
 ## System Structure
@@ -112,68 +124,85 @@ This section maps completed features to the assessment criteria.
   - Finance and maintenance tests cover create and status update flows.
   - Current automated suite status: `27 tests passing` via `python3 -m unittest discover -s tests -p "test_*.py"`.
 
-## Team Members and Roles
+## Team Members and Contributions
 
-This project was completed by a group of four members:
+This project was completed as a group assignment. The contributions below are listed to clearly acknowledge each member’s work.
 
-**Shune Pyae Pyae Aung** – Project Lead, System Architect, Integration Lead, Authentication & User Access Module Developer, Dashboard & UI/Frontend Developer  
-Responsible for leading the project, defining system architecture, dividing tasks, and coordinating implementation milestones. Supported cross-module integration to ensure the application met assessment requirements. Developed the Authentication and User Access module with secure login, password hashing, and role-based access control (RBAC). Implemented user management features including user creation, updates, and permission handling. Designed and developed the main dashboard and key UI components to improve usability, layout, and overall user experience.
+### Shune Pyae Pyae Aung
+**Role:** Project Lead, System Architect, Authentication & User Access Module Developer, Dashboard/UI Developer
 
-**Kyaw Thike San** – Maintenance and Finance Module Developer, Integration Support, and Testing/Deployment Support  
-Responsible for developing and refining the maintenance component of the system, including maintenance request creation, request tracking, scheduling and updating maintenance work, resolution handling, and maintenance cost reporting. Also contributed to the finance component by fixing and improving payments and reports features. In addition, supported role-based workflow improvements, usability enhancements, debugging issues across different environments, Git/GitHub synchronization, cross-platform testing, and system integration.
+Contributed to project leadership, system architecture, task coordination, cross-module integration, authentication, password hashing, role-based access control, user management, and dashboard/UI development.
 
-**Nang Phwe Hleng Hun** – Tenant, Apartment, and Lease Module Developer, UML Designer, and Methodology & Documentation Lead
-Responsible for designing and implementing core system modules for tenant, apartment, and lease management, including CRUD operations, search features, and apartment availability tracking. Implemented lease logic with validation checks such as tenant eligibility and apartment availability, and handled lease creation, termination, and status updates. Ensured data consistency through DAO-based interactions and module integration. Also developed UML diagrams (class and sequence) and contributed to documenting the Agile-based development process and team collaboration in the project report.
+### Kyaw Thike San
+**Role:** Maintenance and Finance Module Developer, Integration Support, Testing and Deployment Support
 
-[Member 4 ] – Testing and Documentation Lead
-Responsible for testing system functions, identifying bugs, supporting debugging, and preparing documentation.
+My main contributions included developing and refining the maintenance component, including request creation, request tracking, scheduling, resolution updates, and maintenance cost reporting. I also contributed to the finance component by improving payment and report-related features. In addition, I supported role-based workflow improvements, usability enhancements, debugging across different environments, Git/GitHub synchronization, cross-platform testing, and system integration.
+
+### Nang Phwe Hleng Hun
+**Role:** Tenant, Apartment, and Lease Module Developer, UML Designer, Methodology and Documentation Lead
+
+Contributed to tenant, apartment, and lease management modules, including CRUD operations, search features, apartment availability tracking, lease validation, lease creation, termination, and status updates. Also contributed to UML diagrams and Agile methodology documentation.
+
+### [Member 4 Name]
+**Role:** Testing and Documentation Lead
+
+Contributed to system testing, bug identification, debugging support, and project documentation.
 
 ## Setup Instructions
 
-### 1. Clone or download the project
-
-Clone the repository or download the ZIP file, then open the project folder.
+### 1. Clone the repository
 
 ```bash
-git clone <your-repository-url>
+git clone https://github.com/kyawthikesan/ASD-Paragon-Apartment-Management-System.git
 cd ASD-Paragon-Apartment-Management-System-PAMS-
-2. Create a virtual environment
-macOS / Linux
+```
+
+### 2. Create a virtual environment
+
+#### macOS / Linux
+
+```bash
 python3 -m venv venv
 source venv/bin/activate
-Windows (PowerShell)
+```
+
+#### Windows PowerShell
+
+```bash
 python -m venv venv
 .\venv\Scripts\Activate.ps1
+```
 
 If PowerShell blocks activation, run:
 
+```bash
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-3. Install the required packages
+```
+
+### 3. Install required packages
+
+```bash
 pip install -r requirements.txt
-4. Run the application
+```
+
+### 4. Run the application
+
+```bash
 python main.py
-5. Database notes
-The system uses a local SQLite database file called pams.db
-If pams.db does not already exist, the application will automatically initialise the database
-Some seed data may also be loaded from database/seed.sql
-
-## Default Login Accounts
-The system includes the following default user accounts for testing:
-
-** Administrator **
-Username: admin
-Password: admin123
+```
 
 
 ## Future Improvements
-The following features may be implemented in future versions:
-- Payment management
-- Maintenance request management
-- Report generation
-- Improved validation and error handling
-- Enhanced security for login credentials
-- Search and filtering functions
-- More detailed user role permissions
+
+Possible future improvements include:
+
+- More advanced reporting and data visualisation
+- Exporting reports to PDF or CSV
+- Email or in-app notifications for late payments and maintenance updates
+- More detailed audit logs for user actions
+- Enhanced role permission configuration
+- Improved UI responsiveness and accessibility
+- Deployment packaging for easier installation
 
 ## Conclusion
 The Paragon Apartment Management System (PAMS) demonstrates the successful development of a desktop application that applies key concepts from applied system design. The project reflects teamwork, modular design, GUI implementation, and database integration while addressing the practical needs of apartment management.
